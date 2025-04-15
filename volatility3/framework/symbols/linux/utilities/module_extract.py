@@ -38,7 +38,7 @@ vollog = logging.getLogger(__name__)
 class ModuleExtract(interfaces.configuration.VersionableInterface):
     """Extracts Linux kernel module structures into an analyzable ELF file"""
 
-    _version = (1, 0, 0)
+    _version = (1, 0, 1)
     _required_framework_version = (2, 25, 0)
 
     framework.require_interface_version(*_required_framework_version)
@@ -60,9 +60,14 @@ class ModuleExtract(interfaces.configuration.VersionableInterface):
         count = 0
 
         try:
+            if grp.has_member("bin_attrs"):
+                arr_offset = grp.bin_attrs
+            else:
+                arr_offset = grp.attrs
+
             array = kernel.object(
                 object_type="array",
-                offset=grp.attrs,
+                offset=arr_offset,
                 sub_type=kernel.get_type("pointer"),
                 count=50,
                 absolute=True,
