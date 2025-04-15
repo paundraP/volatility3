@@ -211,9 +211,7 @@ class module(generic.GenericIntelProcess):
             symbol_table_name + constants.BANG + "array",
             layer_name=self.vol.layer_name,
             offset=self.sect_attrs.attrs.vol.offset,
-            subtype=self._context.symbol_space.get_type(
-                symbol_table_name + constants.BANG + "module_sect_attr"
-            ),
+            subtype=self.sect_attrs.attrs.vol.subtype,
             count=self.number_of_sections,
         )
 
@@ -3187,5 +3185,19 @@ class module_sect_attr(objects.StructType):
                 vollog.debug(
                     f"Unresolvable name for for section at {self.vol.offset:#x}"
                 )
+
+        return None
+
+class bin_attribute(objects.StructType):
+    def get_name(self) -> Optional[str]:
+        """
+        Performs extraction of the bin_attribute name
+        """
+        if hasattr(self, "attr"):
+            try:
+                return utility.pointer_to_string(self.attr.name, count=32)
+            except exceptions.InvalidAddressException:
+                vollog.debug(f"Invalid attr name for bin_attribute at {self.vol.offset:#x}")
+                return None
 
         return None
