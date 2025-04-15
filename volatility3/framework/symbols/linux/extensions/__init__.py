@@ -3188,6 +3188,7 @@ class module_sect_attr(objects.StructType):
 
         return None
 
+
 class bin_attribute(objects.StructType):
     def get_name(self) -> Optional[str]:
         """
@@ -3197,7 +3198,9 @@ class bin_attribute(objects.StructType):
             try:
                 return utility.pointer_to_string(self.attr.name, count=32)
             except exceptions.InvalidAddressException:
-                vollog.debug(f"Invalid attr name for bin_attribute at {self.vol.offset:#x}")
+                vollog.debug(
+                    f"Invalid attr name for bin_attribute at {self.vol.offset:#x}"
+                )
                 return None
 
         return None
