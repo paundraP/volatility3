@@ -173,6 +173,10 @@ class DllList(interfaces.plugins.PluginInterface, timeliner.TimeLinerInterface):
                 except exceptions.InvalidAddressException:
                     size_of_image = renderers.NotAvailableValue()
 
+                LoadCount = entry.get_load_count()
+                if LoadCount is None:
+                    LoadCount = renderers.NotAvailableValue()
+
                 yield (
                     0,
                     (
@@ -186,6 +190,7 @@ class DllList(interfaces.plugins.PluginInterface, timeliner.TimeLinerInterface):
                         size_of_image,
                         BaseDllName,
                         FullDllName,
+                        LoadCount,
                         DllLoadTime,
                         file_output,
                     ),
@@ -232,6 +237,7 @@ class DllList(interfaces.plugins.PluginInterface, timeliner.TimeLinerInterface):
                 ("Size", format_hints.Hex),
                 ("Name", str),
                 ("Path", str),
+                ("LoadCount", int),
                 ("LoadTime", datetime.datetime),
                 ("File output", str),
             ],
