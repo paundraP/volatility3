@@ -48,7 +48,9 @@ class WindowsKernelIntermedSymbols(intermed.IntermediateSymbolTable):
 
         # This doesn't exist in very specific versions of windows
         with contextlib.suppress(ValueError):
-            if self.get_type("_POOL_TRACKER_BIG_PAGES").has_member("PoolType"):
+            if self.get_type("_POOL_TRACKER_BIG_PAGES").has_member(
+                "PoolType"
+            ) or self.get_type("_POOL_TRACKER_BIG_PAGES").has_member("SlushSize"):
                 self.set_type_class("_POOL_HEADER", pool.POOL_HEADER_VISTA)
             else:
                 self.set_type_class("_POOL_HEADER", pool.POOL_HEADER)

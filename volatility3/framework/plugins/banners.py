@@ -22,7 +22,12 @@ class Banners(interfaces.plugins.PluginInterface):
         return [
             requirements.TranslationLayerRequirement(
                 name="primary", description="Memory layer to scan"
-            )
+            ),
+            requirements.VersionRequirement(
+                name="regex_scanner",
+                component=scanners.RegExScanner,
+                version=(1, 0, 0),
+            ),
         ]
 
     def _generator(self):

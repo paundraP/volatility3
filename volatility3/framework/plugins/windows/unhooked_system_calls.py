@@ -22,6 +22,7 @@ class unhooked_system_calls(interfaces.plugins.PluginInterface):
     """Looks for signs of Skeleton Key malware"""
 
     _required_framework_version = (2, 4, 0)
+    _version = (2, 0, 0)
 
     system_calls = {
         "ntdll.dll": {
@@ -94,16 +95,16 @@ class unhooked_system_calls(interfaces.plugins.PluginInterface):
                 architectures=["Intel32", "Intel64"],
             ),
             requirements.VersionRequirement(
-                name="pslist", component=pslist.PsList, version=(2, 0, 0)
+                name="pslist", component=pslist.PsList, version=(3, 0, 0)
             ),
-            requirements.PluginRequirement(
-                name="pe_symbols", plugin=pe_symbols.PESymbols, version=(1, 0, 0)
+            requirements.VersionRequirement(
+                name="pe_symbols", component=pe_symbols.PESymbols, version=(3, 0, 0)
             ),
         ]
 
     def _gather_code_bytes(
         self,
-        kernel: interfaces.context.ModuleInterface,
+        kernel_module_name: str,
         found_symbols: pe_symbols.found_symbols_type,
     ) -> _code_bytes_type:
         """
@@ -115,11 +116,7 @@ class unhooked_system_calls(interfaces.plugins.PluginInterface):
         """
         code_bytes: unhooked_system_calls._code_bytes_type = {}
 
-        procs = pslist.PsList.list_processes(
-            context=self.context,
-            layer_name=kernel.layer_name,
-            symbol_table=kernel.symbol_table_name,
-        )
+        procs = pslist.PsList.list_processes(self.context, kernel_module_name)
 
         for proc in procs:
             try:
@@ -153,18 +150,15 @@ class unhooked_system_calls(interfaces.plugins.PluginInterface):
         return code_bytes
 
     def _generator(self) -> Generator[Tuple[int, Tuple[str, str, int]], None, None]:
-        kernel = self.context.modules[self.config["kernel"]]
-
         found_symbols = pe_symbols.PESymbols.addresses_for_process_symbols(
-            self.context,
-            self.config_path,
-            kernel.layer_name,
-            kernel.symbol_table_name,
-            unhooked_system_calls.system_calls,
+            context=self.context,
+            config_path=self.config_path,
+            kernel_module_name=self.config["kernel"],
+            symbols=unhooked_system_calls.system_calls,
         )
 
         # code_bytes[dll_name][func_name][func_bytes]
-        code_bytes = self._gather_code_bytes(kernel, found_symbols)
+        code_bytes = self._gather_code_bytes(self.config["kernel"], found_symbols)
 
         # walk the functions that were evaluated
         for functions in code_bytes.values():
@@ -191,7 +185,7 @@ class unhooked_system_calls(interfaces.plugins.PluginInterface):
 
                     # gather processes on small_idx since these are the malware infected ones
                     for pid, pname in cb[small_idx]:
-                        ps.append("{:d}:{}".format(pid, pname))
+                        ps.append(f"{pid:d}:{pname}")
 
                     proc_names = ", ".join(ps)
 

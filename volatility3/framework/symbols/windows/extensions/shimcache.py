@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Dict, Optional, Tuple, Union
 
 from volatility3.framework import constants, exceptions, interfaces, objects, renderers
+from volatility3.framework.objects.utility import address_to_string
 from volatility3.framework.symbols.windows.extensions import conversion
 
 vollog = logging.getLogger(__name__)
@@ -56,12 +57,14 @@ class SHIM_CACHE_ENTRY(objects.StructType):
                 blob_offset, blob_size
             ):
                 self._exec_flag = renderers.UnparsableValue()
+                return self._exec_flag
 
             raw_flag = self._context.layers[self.vol.native_layer_name].read(
                 blob_offset, blob_size
             )
             if not raw_flag:
                 self._exec_flag = renderers.UnparsableValue()
+                return self._exec_flag
 
             try:
                 self._exec_flag = bool(struct.unpack("<I", raw_flag)[0])
@@ -71,6 +74,7 @@ class SHIM_CACHE_ENTRY(objects.StructType):
         else:
             # Always set to true for XP/2K3
             self._exec_flag = renderers.NotApplicableValue()
+
         return self._exec_flag
 
     @property
@@ -117,6 +121,8 @@ class SHIM_CACHE_ENTRY(objects.StructType):
             )
         except AttributeError:
             self._last_updated = renderers.NotApplicableValue()
+        except exceptions.InvalidAddressException:
+            self._last_updated = renderers.UnreadableValue()
 
         return self._last_updated
 
@@ -126,8 +132,12 @@ class SHIM_CACHE_ENTRY(objects.StructType):
             return self._file_path
 
         if not hasattr(self.Path, "Buffer"):
-            return self.Path.cast(
-                "string", max_length=self.Path.vol.count, encoding="utf-16le"
+            return address_to_string(
+                self._context,
+                self.Path.vol.layer_name,
+                self.Path.vol.offset,
+                self.Path.vol.count,
+                encoding="utf-16le",
             )
 
         try:

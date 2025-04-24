@@ -1,10 +1,10 @@
 # This file is Copyright 2019 Volatility Foundation and licensed under the Volatility Software License 1.0
 # which is available at https://www.volatilityfoundation.org/license/vsl-v1.0
 #
-"""A module containing a collection of plugins that produce data typically
-found in Linux's /proc file system."""
+"""A module containing a plugin that verifies the operation function
+pointers of network protocols."""
 import logging
-from typing import List
+from typing import List, Tuple, Generator
 
 from volatility3.framework import exceptions, interfaces
 from volatility3.framework import renderers
@@ -18,6 +18,7 @@ vollog = logging.getLogger(__name__)
 class Check_afinfo(plugins.PluginInterface):
     """Verifies the operation function pointers of network protocols."""
 
+    _version = (1, 0, 0)
     _required_framework_version = (2, 0, 0)
 
     @classmethod
@@ -30,63 +31,80 @@ class Check_afinfo(plugins.PluginInterface):
             ),
         ]
 
-    # returns whether the symbol is found within the kernel (system.map) or not
-    def _is_known_address(self, handler_addr):
-        symbols = list(self.context.symbol_space.get_symbols_by_location(handler_addr))
+    @classmethod
+    def _check_members(
+        cls,
+        context: interfaces.context.ContextInterface,
+        vmlinux_name: str,
+        var_ops: interfaces.objects.ObjectInterface,
+        var_name: str,
+        members: List[str],
+    ) -> Generator[Tuple[str, str, int], None, None]:
+        """
+        Yields any members that are not pointing inside the kernel
+        """
 
-        return len(symbols) > 0
+        vmlinux = context.modules[vmlinux_name]
 
-    def _check_members(self, var_ops, var_name, members):
         for check in members:
             # redhat-specific garbage
             if check.startswith("__UNIQUE_ID_rh_kabi_hide"):
                 continue
 
-            if check == "write":
-                addr = var_ops.member(attr="write")
-            else:
-                addr = getattr(var_ops, check)
+            # These structures have members like `write` and `next`, which are built in Python functions
+            addr = var_ops.member(attr=check)
 
-            if addr and addr != 0 and not self._is_known_address(addr):
-                yield check, addr
+            # Unimplemented handlers are set to 0
+            if not addr:
+                continue
 
-    def _check_afinfo(self, var_name, var, op_members, seq_members):
-        # check if object has a least one of the members used for analysis by this function
-        required_members = ["seq_fops", "seq_ops", "seq_show"]
-        has_required_member = any(
-            [var.has_member(member) for member in required_members]
-        )
-        if not has_required_member:
-            vollog.debug(
-                f"{var_name} object at {hex(var.vol.offset)} had none of the required members: {', '.join([member for member in required_members])}"
-            )
-            raise exceptions.PluginRequirementException
+            if len(vmlinux.get_symbols_by_absolute_location(addr)) == 0:
+                yield var_name, check, addr
+
+    @classmethod
+    def _check_pre_4_18_ops(
+        cls,
+        context: interfaces.context.ContextInterface,
+        vmlinux_name: str,
+        var_name: str,
+        var: interfaces.objects.ObjectInterface,
+        op_members: List[str],
+        seq_members: List[str],
+    ):
+        """
+        Finds the correct way to reference `op_members`
+        """
+        vmlinux = context.modules[vmlinux_name]
 
         if var.has_member("seq_fops"):
-            for hooked_member, hook_address in self._check_members(
-                var.seq_fops, var_name, op_members
-            ):
-                yield var_name, hooked_member, hook_address
-
+            yield from cls._check_members(
+                context, vmlinux_name, var.seq_fops, var_name, op_members
+            )
         # newer kernels
         if var.has_member("seq_ops"):
-            for hooked_member, hook_address in self._check_members(
-                var.seq_ops, var_name, seq_members
-            ):
-                yield var_name, hooked_member, hook_address
+            yield from cls._check_members(
+                context, vmlinux_name, var.seq_ops, var_name, seq_members
+            )
 
         # this is the most commonly hooked member by rootkits, so a force a check on it
+        elif var.has_member("seq_show"):
+            if len(vmlinux.get_symbols_by_location(var.seq_show)) == 0:
+                yield var_name, "show", var.seq_show
         else:
-            if var.has_member("seq_show"):
-                if not self._is_known_address(var.seq_show):
-                    yield var_name, "show", var.seq_show
+            raise exceptions.VolatilityException(
+                "_check_afinfo_pre_4_18: Unable to find sequence operations members for checking."
+            )
 
-    def _generator(self):
-        vmlinux = self.context.modules[self.config["kernel"]]
-
-        op_members = vmlinux.get_type("file_operations").members
-        seq_members = vmlinux.get_type("seq_operations").members
-
+    @classmethod
+    def _check_afinfo_pre_4_18(
+        cls,
+        context: interfaces.context.ContextInterface,
+        vmlinux_name: str,
+        seq_members: str,
+    ) -> Generator[Tuple[str, str, int], None, None]:
+        """
+        Checks the operations structures for network protocols of < 4.18 systems
+        """
         tcp = ("tcp_seq_afinfo", ["tcp6_seq_afinfo", "tcp4_seq_afinfo"])
         udp = (
             "udp_seq_afinfo",
@@ -99,38 +117,92 @@ class Check_afinfo(plugins.PluginInterface):
         )
         protocols = [tcp, udp]
 
-        # used to track the calls to _check_afinfo and the
-        # number of errors produced due to missing members
-        symbols_checked = set()
-        symbols_with_errors = set()
+        vmlinux = context.modules[vmlinux_name]
+
+        op_members = vmlinux.get_type("file_operations").members
 
         # loop through all symbols
         for struct_type, global_vars in protocols:
             for global_var_name in global_vars:
                 # this will lookup fail for the IPv6 protocols on kernels without IPv6 support
                 try:
-                    global_var = vmlinux.get_symbol(global_var_name)
+                    global_var = vmlinux.object_from_symbol(global_var_name)
                 except exceptions.SymbolError:
                     continue
 
-                global_var = vmlinux.object(
-                    object_type=struct_type, offset=global_var.address
+                yield from cls._check_pre_4_18_ops(
+                    context,
+                    vmlinux_name,
+                    global_var_name,
+                    global_var,
+                    op_members,
+                    seq_members,
                 )
 
-                symbols_checked.add(global_var_name)
-                try:
-                    for name, member, address in self._check_afinfo(
-                        global_var_name, global_var, op_members, seq_members
-                    ):
-                        yield 0, (name, member, format_hints.Hex(address))
-                except exceptions.PluginRequirementException:
-                    symbols_with_errors.add(global_var_name)
+    @classmethod
+    def _check_afinfo_post_4_18(
+        cls,
+        context: interfaces.context.ContextInterface,
+        vmlinux_name: str,
+        seq_members: str,
+    ) -> Generator[Tuple[str, str, int], None, None]:
+        """
+        Checks the operations structures for network protocols of >= 4.18 systems
+        """
+        vmlinux = context.modules[vmlinux_name]
 
-        # if every call to _check_afinfo failed show a warning
-        if symbols_checked == symbols_with_errors:
-            vollog.warning(
-                "This plugin was not able to check for hooks. This means you are either analyzing an unsupported kernel version or that your symbol table is corrupt."
+        ops_structs = [
+            "raw_seq_ops",
+            "udp_seq_ops",
+            "arp_seq_ops",
+            "unix_seq_ops",
+            "udp6_seq_ops",
+            "raw6_seq_ops",
+            "tcp_seq_ops",
+            "tcp4_seq_ops",
+            "tcp6_seq_ops",
+            "packet_seq_ops",
+        ]
+
+        for protocol_ops_var in ops_structs:
+            # These will fail if the particular kernel doesn't have support for a protocol like IPv6
+            try:
+                protocol_ops = vmlinux.object_from_symbol(protocol_ops_var)
+            except exceptions.SymbolError:
+                continue
+
+            yield from cls._check_members(
+                context, vmlinux_name, protocol_ops, protocol_ops_var, seq_members
             )
+
+    @classmethod
+    def check_afinfo(
+        cls, context: interfaces.context.ContextInterface, vmlinux_name
+    ) -> Generator[Tuple[str, str, int], None, None]:
+        """
+        Walks the network protocol operations structures for common network protocols.
+        Reports any initialized operations members that do not point inside the kernel.
+        """
+        vmlinux = context.modules[vmlinux_name]
+
+        type_check = vmlinux.get_type("tcp_seq_afinfo")
+        if type_check.has_member("seq_fops"):
+            checker = cls._check_afinfo_pre_4_18
+        else:
+            checker = cls._check_afinfo_post_4_18
+
+        seq_members = vmlinux.get_type("seq_operations").members
+
+        yield from checker(context, vmlinux_name, seq_members)
+
+    def _generator(self):
+        """
+        A simple wrapper around `check_afino`
+        """
+        for name, member, address in self.check_afinfo(
+            self.context, self.config["kernel"]
+        ):
+            yield 0, (name, member, format_hints.Hex(address))
 
     def run(self):
         return renderers.TreeGrid(

@@ -13,11 +13,11 @@ from volatility3.plugins.windows import pslist, threads, vadinfo, thrdscan
 vollog = logging.getLogger(__name__)
 
 
-class SupsiciousThreads(interfaces.plugins.PluginInterface):
+class SuspiciousThreads(interfaces.plugins.PluginInterface):
     """Lists suspicious userland process threads"""
 
     _required_framework_version = (2, 4, 0)
-    _version = (2, 0, 0)
+    _version = (2, 0, 1)
 
     @classmethod
     def get_requirements(cls) -> List[interfaces.configuration.RequirementInterface]:
@@ -34,8 +34,14 @@ class SupsiciousThreads(interfaces.plugins.PluginInterface):
                 element_type=int,
                 optional=True,
             ),
-            requirements.PluginRequirement(
-                name="threads", plugin=threads.Threads, version=(1, 0, 0)
+            requirements.VersionRequirement(
+                name="thrdscan", component=thrdscan.ThrdScan, version=(2, 0, 0)
+            ),
+            requirements.VersionRequirement(
+                name="pslist", component=pslist.PsList, version=(3, 0, 0)
+            ),
+            requirements.VersionRequirement(
+                name="threads", component=threads.Threads, version=(3, 0, 0)
             ),
             requirements.VersionRequirement(
                 name="vadinfo", component=vadinfo.VadInfo, version=(2, 0, 0)
@@ -133,8 +139,7 @@ class SupsiciousThreads(interfaces.plugins.PluginInterface):
 
         for proc in pslist.PsList.list_processes(
             context=self.context,
-            layer_name=kernel.layer_name,
-            symbol_table=kernel.symbol_table_name,
+            kernel_module_name=self.config["kernel"],
             filter_func=filter_func,
         ):
             ranges = self._get_ranges(kernel, all_ranges, proc)
@@ -164,7 +169,9 @@ class SupsiciousThreads(interfaces.plugins.PluginInterface):
             # there is no benefit to checking the same address more than once per process
             checked = set()
 
-            for thread in threads.Threads.list_threads(kernel, proc):
+            for thread in threads.Threads.list_threads(
+                self.context, self.config["kernel"], proc
+            ):
                 # do not process if a thread is exited or terminated (4 = Terminated)
                 if thread.ExitTime.QuadPart > 0 or thread.Tcb.State == 4:
                     continue
@@ -174,11 +181,11 @@ class SupsiciousThreads(interfaces.plugins.PluginInterface):
                 if not info:
                     continue
 
-                _, _, tid, start_address, _, _ = info
+                _, _, tid, start_address, _, win32_start_address, _, _, _ = info
 
                 addresses = [
                     (start_address, "Start"),
-                    (thread.Win32StartAddress, "Win32Start"),
+                    (win32_start_address, "Win32Start"),
                 ]
 
                 for address, context in addresses:

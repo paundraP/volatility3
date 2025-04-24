@@ -2,7 +2,7 @@
 # which is available at https://www.volatilityfoundation.org/license/vsl-v1.0
 #
 import logging
-from typing import Iterable, Tuple
+from typing import Iterable, Generator, Tuple
 
 from volatility3.framework import interfaces, symbols, exceptions
 from volatility3.framework import renderers
@@ -17,7 +17,8 @@ vollog = logging.getLogger(__name__)
 class Malfind(interfaces.plugins.PluginInterface):
     """Lists process memory ranges that potentially contain injected code."""
 
-    _required_framework_version = (2, 4, 0)
+    _required_framework_version = (2, 22, 0)
+    _version = (1, 1, 0)
 
     @classmethod
     def get_requirements(cls):
@@ -41,7 +42,7 @@ class Malfind(interfaces.plugins.PluginInterface):
                 optional=True,
             ),
             requirements.VersionRequirement(
-                name="pslist", component=pslist.PsList, version=(2, 0, 0)
+                name="pslist", component=pslist.PsList, version=(3, 0, 0)
             ),
             requirements.VersionRequirement(
                 name="vadinfo", component=vadinfo.VadInfo, version=(2, 0, 0)
@@ -88,6 +89,25 @@ class Malfind(interfaces.plugins.PluginInterface):
         symbol_table: str,
         proc: interfaces.objects.ObjectInterface,
     ) -> Iterable[Tuple[interfaces.objects.ObjectInterface, bytes]]:
+        for vad, data_object in cls.list_injection_sites(
+            context, kernel_layer_name, symbol_table, proc
+        ):
+            yield vad, data_object.context.layers[data_object.layer_name].read(
+                data_object.offset, data_object.length
+            )
+
+    @classmethod
+    def list_injection_sites(
+        cls,
+        context: interfaces.context.ContextInterface,
+        kernel_layer_name: str,
+        symbol_table: str,
+        proc: interfaces.objects.ObjectInterface,
+    ) -> Generator[
+        Tuple[interfaces.objects.ObjectInterface, renderers.LayerData],
+        None,
+        None,
+    ]:
         """Generate memory regions for a process that may contain injected
         code.
 
@@ -106,9 +126,7 @@ class Malfind(interfaces.plugins.PluginInterface):
             proc_layer_name = proc.add_process_layer()
         except exceptions.InvalidAddressException as excp:
             vollog.debug(
-                "Process {}: invalid address {} in layer {}".format(
-                    proc_id, excp.invalid_address, excp.layer_name
-                )
+                f"Process {proc_id}: invalid address {excp.invalid_address} in layer {excp.layer_name}"
             )
             return None
 
@@ -122,10 +140,29 @@ class Malfind(interfaces.plugins.PluginInterface):
                 vadinfo.winnt_protections,
             )
             write_exec = "EXECUTE" in protection_string and "WRITE" in protection_string
-
-            # the write/exec check applies to everything
+            dirty_page = None
             if not write_exec:
-                continue
+                """
+                # Inspect "PAGE_EXECUTE_READ" VAD pages to detect
+                # non writable memory regions having been injected
+                # using elevated WriteProcessMemory().
+                """
+                if "EXECUTE" in protection_string:
+                    for page in range(
+                        vad.get_start(), vad.get_end(), proc_layer.page_size
+                    ):
+                        try:
+                            # If we have a dirty page in a non writable "EXECUTE" region, it is suspicious.
+                            if proc_layer.is_dirty(page):
+                                dirty_page = page
+                                break
+                        except exceptions.InvalidAddressException:
+                            # Abort as it is likely that other addresses in the same range will also fail.
+                            break
+                    if dirty_page is None:
+                        continue
+                else:
+                    continue
 
             if (vad.get_private_memory() == 1 and vad.get_tag() == "VadS") or (
                 vad.get_private_memory() == 0
@@ -134,8 +171,21 @@ class Malfind(interfaces.plugins.PluginInterface):
                 if cls.is_vad_empty(proc_layer, vad):
                     continue
 
-                data = proc_layer.read(vad.get_start(), 64, pad=True)
-                yield vad, data
+                if dirty_page is not None:
+                    # Useful information to investigate the page content with volshell afterwards.
+                    vollog.warning(
+                        f"[proc_id {proc_id}] Found suspicious DIRTY + {protection_string} page at {hex(dirty_page)}",
+                    )
+                start = vad.get_start()
+                length = 64
+                data = renderers.LayerData(
+                    context=context,
+                    layer_name=proc_layer_name,
+                    offset=start,
+                    length=length,
+                    no_surrounding=True,
+                )
+                yield (vad, data)
 
     def _generator(self, procs):
         # determine if we're on a 32 or 64 bit kernel
@@ -144,24 +194,27 @@ class Malfind(interfaces.plugins.PluginInterface):
         # set refined criteria to know when to add to "Notes" column
         refined_criteria = {
             b"MZ": "MZ header",
-            b"\x55\x8B": "PE header",
+            b"\x55\x8b": "PE header",
             b"\x55\x48": "Function prologue",
             b"\x55\x89": "Function prologue",
         }
 
         is_32bit_arch = not symbols.symbol_table_is_64bit(
-            self.context, kernel.symbol_table_name
+            context=self.context, symbol_table_name=kernel.symbol_table_name
         )
 
         for proc in procs:
             # by default, "Notes" column will be set to N/A
             process_name = utility.array_to_string(proc.ImageFileName)
 
-            for vad, data in self.list_injections(
+            for vad, data_object in self.list_injection_sites(
                 self.context, kernel.layer_name, kernel.symbol_table_name, proc
             ):
                 notes = renderers.NotApplicableValue()
                 # Check for unique headers and update "Notes" column if criteria is met
+                data = data_object.context.layers[data_object.layer_name].read(
+                    data_object.offset, data_object.length, True
+                )
                 if data[0:2] in refined_criteria:
                     notes = refined_criteria[data[0:2]]
 
@@ -171,9 +224,7 @@ class Malfind(interfaces.plugins.PluginInterface):
                 else:
                     architecture = "intel64"
 
-                disasm = interfaces.renderers.Disassembly(
-                    data, vad.get_start(), architecture
-                )
+                disasm = renderers.Disassembly(data, vad.get_start(), architecture)
 
                 file_output = "Disabled"
                 if self.config["dump"]:
@@ -186,9 +237,7 @@ class Malfind(interfaces.plugins.PluginInterface):
                         file_output = file_handle.preferred_filename
                     except (exceptions.InvalidAddressException, OverflowError) as excp:
                         vollog.debug(
-                            "Unable to dump PE with pid {0}.{1:#x}: {2}".format(
-                                proc.UniqueProcessId, vad.get_start(), excp
-                            )
+                            f"Unable to dump PE with pid {proc.UniqueProcessId}.{vad.get_start():#x}: {excp}"
                         )
 
                 yield (
@@ -211,14 +260,13 @@ class Malfind(interfaces.plugins.PluginInterface):
                         vad.get_private_memory(),
                         file_output,
                         notes,
-                        format_hints.HexBytes(data),
+                        data_object,
                         disasm,
                     ),
                 )
 
     def run(self):
         filter_func = pslist.PsList.create_pid_filter(self.config.get("pid", None))
-        kernel = self.context.modules[self.config["kernel"]]
 
         return renderers.TreeGrid(
             [
@@ -232,14 +280,13 @@ class Malfind(interfaces.plugins.PluginInterface):
                 ("PrivateMemory", int),
                 ("File output", str),
                 ("Notes", str),
-                ("Hexdump", format_hints.HexBytes),
-                ("Disasm", interfaces.renderers.Disassembly),
+                ("Hexdump", renderers.LayerData),
+                ("Disasm", renderers.Disassembly),
             ],
             self._generator(
                 pslist.PsList.list_processes(
                     context=self.context,
-                    layer_name=kernel.layer_name,
-                    symbol_table=kernel.symbol_table_name,
+                    kernel_module_name=self.config["kernel"],
                     filter_func=filter_func,
                 )
             ),

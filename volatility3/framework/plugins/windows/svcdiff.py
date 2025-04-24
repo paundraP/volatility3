@@ -1,15 +1,13 @@
 # This file is Copyright 2024 Volatility Foundation and licensed under the Volatility Software License 1.0
 # which is available at https://www.volatilityfoundation.org/license/vsl-v1.0
 #
-
-# This module attempts to locate skeleton-key like function hooks.
-# It does this by locating the CSystems array through a variety of methods,
-# and then validating the entry for RC4 HMAC (0x17 / 23)
+# This module compares services found through list walking versus scanning,
+# with the aim of finding hidden services.
 #
-# For a thorough walkthrough on how the R&D was performed to develop this plugin,
-# please see our blogpost here:
+# For background of hidden services and a real-world example of the use of this plugin,
+# please see our blogpost:
 #
-# https://volatility-labs.blogspot.com/2021/10/memory-forensics-r-illustrated.html
+# https://volatilityfoundation.org/memory-forensics-rd-illustrated-detecting-hidden-windows-services/
 
 import logging
 
@@ -26,6 +24,8 @@ class SvcDiff(svcscan.SvcScan):
 
     _required_framework_version = (2, 4, 0)
 
+    _version = (2, 0, 0)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._enumeration_method = self.service_diff
@@ -40,10 +40,10 @@ class SvcDiff(svcscan.SvcScan):
                 architectures=["Intel32", "Intel64"],
             ),
             requirements.VersionRequirement(
-                name="svclist", component=svclist.SvcList, version=(1, 0, 0)
+                name="svclist", component=svclist.SvcList, version=(2, 0, 0)
             ),
             requirements.VersionRequirement(
-                name="svcscan", component=svcscan.SvcScan, version=(3, 0, 0)
+                name="svcscan", component=svcscan.SvcScan, version=(4, 0, 0)
             ),
         ]
 
@@ -51,8 +51,7 @@ class SvcDiff(svcscan.SvcScan):
     def service_diff(
         cls,
         context: interfaces.context.ContextInterface,
-        layer_name: str,
-        symbol_table: str,
+        kernel_module_name: str,
         service_table_name: str,
         service_binary_dll_map,
         filter_func,
@@ -61,10 +60,12 @@ class SvcDiff(svcscan.SvcScan):
         On Windows 10 version 15063+ 64bit Windows memory samples, walk the services list
         and scan for services then report differences
         """
+        kernel = context.modules[kernel_module_name]
+
         if not symbols.symbol_table_is_64bit(
-            context, symbol_table
+            context=context, symbol_table_name=kernel.symbol_table_name
         ) or not versions.is_win10_15063_or_later(
-            context=context, symbol_table=symbol_table
+            context=context, symbol_table=kernel.symbol_table_name
         ):
             vollog.warning(
                 "This plugin only supports Windows 10 version 15063+ 64bit Windows memory samples"
@@ -78,8 +79,7 @@ class SvcDiff(svcscan.SvcScan):
         # collect unique service names from scanning
         for service in svcscan.SvcScan.service_scan(
             context,
-            layer_name,
-            symbol_table,
+            kernel_module_name,
             service_table_name,
             service_binary_dll_map,
             filter_func,
@@ -90,8 +90,7 @@ class SvcDiff(svcscan.SvcScan):
         # collect services from listing walking
         for service in svclist.SvcList.service_list(
             context,
-            layer_name,
-            symbol_table,
+            kernel_module_name,
             service_table_name,
             service_binary_dll_map,
             filter_func,

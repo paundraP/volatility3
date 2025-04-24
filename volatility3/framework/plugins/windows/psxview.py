@@ -1,15 +1,18 @@
-import datetime, logging, string
+import datetime
+import logging
+import string
+from itertools import chain
+from typing import Dict, Iterable, List
 
-from volatility3.framework import constants, exceptions
-from volatility3.framework.interfaces import plugins
+from volatility3.framework import constants, exceptions, renderers
 from volatility3.framework.configuration import requirements
-from volatility3.framework.renderers import format_hints, TreeGrid
+from volatility3.framework.interfaces import plugins
+from volatility3.framework.renderers import format_hints
+from volatility3.framework.symbols.windows import extensions
 from volatility3.plugins.windows import (
     handles,
-    info,
     pslist,
     psscan,
-    sessions,
     thrdscan,
 )
 
@@ -17,11 +20,12 @@ vollog = logging.getLogger(__name__)
 
 
 class PsXView(plugins.PluginInterface):
-    """Lists all processes found via four of the methods described in \"The Art of Memory Forensics,\" which may help
-    identify processes that are trying to hide themselves. I recommend using -r pretty if you are looking at this
-    plugin's output in a terminal."""
+    """Lists all processes found via four of the methods described in \"The Art of Memory Forensics\" which may help \
+identify processes that are trying to hide themselves.
 
-    # I've omitted the desktop thread scanning method because Volatility3 doesn't appear to have the funcitonality
+We recommend using -r pretty if you are looking at this plugin's output in a terminal."""
+
+    # I've omitted the desktop thread scanning method because Volatility3 doesn't appear to have the functionality
     # which the original plugin used to do it.
 
     # The sessions method is omitted because it begins with the list of processes found by Pslist anyway.
@@ -45,19 +49,16 @@ class PsXView(plugins.PluginInterface):
                 architectures=["Intel32", "Intel64"],
             ),
             requirements.VersionRequirement(
-                name="info", component=info.Info, version=(1, 0, 0)
+                name="pslist", component=pslist.PsList, version=(3, 0, 0)
             ),
             requirements.VersionRequirement(
-                name="pslist", component=pslist.PsList, version=(2, 0, 0)
+                name="psscan", component=psscan.PsScan, version=(2, 0, 0)
             ),
             requirements.VersionRequirement(
-                name="psscan", component=psscan.PsScan, version=(1, 0, 0)
+                name="thrdscan", component=thrdscan.ThrdScan, version=(2, 0, 0)
             ),
             requirements.VersionRequirement(
-                name="thrdscan", component=thrdscan.ThrdScan, version=(1, 0, 0)
-            ),
-            requirements.VersionRequirement(
-                name="handles", component=handles.Handles, version=(1, 0, 0)
+                name="handles", component=handles.Handles, version=(3, 0, 0)
             ),
             requirements.BooleanRequirement(
                 name="physical-offsets",
@@ -71,20 +72,19 @@ class PsXView(plugins.PluginInterface):
             "string", max_length=proc.ImageFileName.vol.count, errors="replace"
         )
 
-    def _is_valid_proc_name(self, str):
-        for c in str:
-            if not c in self.valid_proc_name_chars:
-                return False
-        return True
+    def _is_valid_proc_name(self, string: str) -> bool:
+        return all(c in self.valid_proc_name_chars for c in string)
 
-    def _filter_garbage_procs(self, proc_list):
+    def _filter_garbage_procs(
+        self, proc_list: Iterable[extensions.EPROCESS]
+    ) -> List[extensions.EPROCESS]:
         return [
             p
             for p in proc_list
             if p.is_valid() and self._is_valid_proc_name(self._proc_name_to_string(p))
         ]
 
-    def _translate_offset(self, offset):
+    def _translate_offset(self, offset: int) -> int:
         if not self.config["physical-offsets"]:
             return offset
 
@@ -100,21 +100,25 @@ class PsXView(plugins.PluginInterface):
 
         return offset
 
-    def _proc_list_to_dict(self, tasks):
+    def _proc_list_to_dict(
+        self, tasks: Iterable[extensions.EPROCESS]
+    ) -> Dict[int, extensions.EPROCESS]:
         tasks = self._filter_garbage_procs(tasks)
         return {self._translate_offset(proc.vol.offset): proc for proc in tasks}
 
     def _check_pslist(self, tasks):
         return self._proc_list_to_dict(tasks)
 
-    def _check_psscan(self, layer_name, symbol_table):
+    def _check_psscan(
+        self,
+    ) -> Dict[int, extensions.EPROCESS]:
         res = psscan.PsScan.scan_processes(
-            context=self.context, layer_name=layer_name, symbol_table=symbol_table
+            context=self.context, kernel_module_name=self.config["kernel"]
         )
 
         return self._proc_list_to_dict(res)
 
-    def _check_thrdscan(self):
+    def _check_thrdscan(self) -> Dict[int, extensions.EPROCESS]:
         ret = []
 
         for ethread in thrdscan.ThrdScan.scan_threads(
@@ -135,85 +139,76 @@ class PsXView(plugins.PluginInterface):
 
         return self._proc_list_to_dict(ret)
 
-    def _check_csrss_handles(self, tasks, layer_name, symbol_table):
-        ret = []
+    def _check_csrss_handles(
+        self, tasks: Iterable[extensions.EPROCESS]
+    ) -> Dict[int, extensions.EPROCESS]:
+        ret: List[extensions.EPROCESS] = []
+
+        handles_plugin = handles.Handles(
+            context=self.context, config_path=self.config_path
+        )
+
+        type_map = handles_plugin.get_type_map(
+            context=self.context, kernel_module_name=self.config["kernel"]
+        )
+
+        cookie = handles_plugin.find_cookie(
+            context=self.context, kernel_module_name=self.config["kernel"]
+        )
 
         for p in tasks:
             name = self._proc_name_to_string(p)
-            if name == "csrss.exe":
-                try:
-                    if p.has_member("ObjectTable"):
-                        handles_plugin = handles.Handles(
-                            context=self.context, config_path=self.config_path
-                        )
-                        hndls = list(handles_plugin.handles(p.ObjectTable))
-                        for h in hndls:
-                            if (
-                                h.get_object_type(
-                                    handles_plugin.get_type_map(
-                                        self.context, layer_name, symbol_table
-                                    )
-                                )
-                                == "Process"
-                            ):
-                                ret.append(h.Body.cast("_EPROCESS"))
+            if name != "csrss.exe":
+                continue
 
-                except exceptions.InvalidAddressException:
-                    vollog.log(
-                        constants.LOGLEVEL_VVV, "Cannot access eprocess object table"
-                    )
+            try:
+                ret += [
+                    handle.Body.cast("_EPROCESS")
+                    for handle in handles_plugin.handles(p.ObjectTable)
+                    if handle.get_object_type(type_map, cookie) == "Process"
+                ]
+            except exceptions.InvalidAddressException:
+                vollog.log(
+                    constants.LOGLEVEL_VVV, "Cannot access eprocess object table"
+                )
 
         return self._proc_list_to_dict(ret)
 
     def _generator(self):
-        kernel = self.context.modules[self.config["kernel"]]
-
-        layer_name = kernel.layer_name
-        symbol_table = kernel.symbol_table_name
-
         kdbg_list_processes = list(
             pslist.PsList.list_processes(
-                context=self.context, layer_name=layer_name, symbol_table=symbol_table
+                context=self.context, kernel_module_name=self.config["kernel"]
             )
         )
 
         # get processes from each source
-        processes = {}
+        processes: Dict[str, Dict[int, extensions.EPROCESS]] = {}
 
         processes["pslist"] = self._check_pslist(kdbg_list_processes)
-        processes["psscan"] = self._check_psscan(layer_name, symbol_table)
+        processes["psscan"] = self._check_psscan()
         processes["thrdscan"] = self._check_thrdscan()
-        processes["csrss"] = self._check_csrss_handles(
-            kdbg_list_processes, layer_name, symbol_table
-        )
+        processes["csrss"] = self._check_csrss_handles(kdbg_list_processes)
 
-        # print results
-
-        # list of lists of offsets
-        offsets = [list(processes[source].keys()) for source in processes]
-
-        # flatten to one list
-        offsets = sum(offsets, [])
-
-        # remove duplicates
-        offsets = set(offsets)
+        # Unique set of all offsets from all sources
+        offsets = set(chain(*(mapping.keys() for mapping in processes.values())))
 
         for offset in offsets:
-            proc = None
+            # We know there will be at least one process mapped to each offset
+            proc: extensions.EPROCESS = next(
+                mapping[offset] for mapping in processes.values() if offset in mapping
+            )
 
             in_sources = {src: False for src in processes}
 
-            for source in processes:
-                if offset in processes[source]:
+            for source, process_mapping in processes.items():
+                if offset in process_mapping:
                     in_sources[source] = True
-                    if not proc:
-                        proc = processes[source][offset]
 
             pid = proc.UniqueProcessId
             name = self._proc_name_to_string(proc)
 
             exit_time = proc.get_exit_time()
-            if type(exit_time) != datetime.datetime:
+            if type(exit_time) is not datetime.datetime:
                 exit_time = ""
             else:
                 exit_time = str(exit_time)
@@ -236,7 +231,7 @@ class PsXView(plugins.PluginInterface):
         offset_type = "(Physical)" if self.config["physical-offsets"] else "(Virtual)"
         offset_str = "Offset" + offset_type
 
-        return TreeGrid(
+        return renderers.TreeGrid(
             [
                 (offset_str, format_hints.Hex),
                 ("Name", str),
