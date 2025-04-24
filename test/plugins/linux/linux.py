@@ -618,7 +618,7 @@ class TestLinuxPscallstack:
 
 
 class TestLinuxSockscan:
-    def test_linux_sockscan(image, volatility, python):
+    def test_linux_sockscan(self, volatility, python):
         # designed for linux-sample-1.dmp SHA1:1C3A4627EDCA94A7ADE3414592BEF0E62D7D3BB6
         image = LinuxSamples.LINUX_GENERIC.value.path
         rc, out, err = test_volatility.runvol_plugin(
