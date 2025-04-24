@@ -296,6 +296,7 @@ class Sockscan(plugins.PluginInterface):
                 constants.LOGLEVEL_VVVV,
                 f"Unable create results for socket at {hex(sock_physical_addr)} due to invalid address: {error}",
             )
+        return None
 
     def _generator(self, symbol_table_name: str):
         """Scans for sockets. Each row represents a kernel socket.
