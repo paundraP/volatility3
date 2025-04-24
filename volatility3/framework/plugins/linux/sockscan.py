@@ -225,6 +225,7 @@ class Sockscan(plugins.PluginInterface):
                 constants.LOGLEVEL_VVVV,
                 f"Unable to follow file at {hex(needle_addr)} to socket due to invalid address: {error}",
             )
+        return None
 
     def _extract_sock_fields(self, psock, sock_handler):
         try:
