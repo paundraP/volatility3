@@ -134,7 +134,7 @@ class Sockscan(plugins.PluginInterface):
             )
         elif len(kernel_layer.dependencies) == 0:
             vollog.error(
-                f"Kernel layer has no dependencies, meaning there is no memory layer for this plugin to scan."
+                "Kernel layer has no dependencies, meaning there is no memory layer for this plugin to scan."
             )
             raise exceptions.LayerException(
                 vmlinux.layer_name, f"Layer {vmlinux.layer_name} has no dependencies"
