@@ -49,6 +49,11 @@ class Sockscan(plugins.PluginInterface):
             requirements.VersionRequirement(
                 name="linux_net", component=network.NetSymbols, version=(1, 0, 0)
             ),
+            requirements.VersionRequirement(
+                name="multi_string_scanner",
+                component=scanners.MultiStringScanner,
+                version=(1, 0, 0),
+            ),
         ]
 
     def _canonicalize_symbol_addrs(
