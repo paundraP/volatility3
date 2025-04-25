@@ -41,10 +41,10 @@ class Sockscan(plugins.PluginInterface):
                 name="lsof", component=lsof.Lsof, version=(2, 0, 0)
             ),
             requirements.VersionRequirement(
-                name="pslist", component=pslist.PsList, version=(4, 0, 0)
+                name="pslist", component=pslist.PsList, version=(4, 1, 0)
             ),
             requirements.VersionRequirement(
-                name="linuxutils", component=linux.LinuxUtilities, version=(2, 0, 0)
+                name="linuxutils", component=linux.LinuxUtilities, version=(2, 1, 0)
             ),
             requirements.VersionRequirement(
                 name="linux_net", component=network.NetSymbols, version=(1, 0, 0)
