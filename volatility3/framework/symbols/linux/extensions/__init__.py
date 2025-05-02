@@ -3221,3 +3221,10 @@ class bin_attribute(objects.StructType):
                 return None
 
         return None
+
+    @property
+    def address(self) -> int:
+        """Equivalent to module_sect_attr.address:
+        - https://github.com/torvalds/linux/commit/4b2c11e4aaf7e3d7fd9ce8e5995a32ff5e27d74f
+        """
+        return self.private
