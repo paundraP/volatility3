@@ -38,7 +38,7 @@ vollog = logging.getLogger(__name__)
 class ModuleExtract(interfaces.configuration.VersionableInterface):
     """Extracts Linux kernel module structures into an analyzable ELF file"""
 
-    _version = (1, 0, 2)
+    _version = (1, 0, 1)
     _required_framework_version = (2, 25, 0)
 
     framework.require_interface_version(*_required_framework_version)
