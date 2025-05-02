@@ -616,9 +616,10 @@ class ModuleExtract(interfaces.configuration.VersionableInterface):
             return None
 
         # Gather sections
-        updated_sections, strtab_index, symtab_index = cls._parse_sections(
-            context, vmlinux_name, module
-        )
+        parse_sections_result = cls._parse_sections(context, vmlinux_name, module)
+        if parse_sections_result is None:
+            return None
+        updated_sections, strtab_index, symtab_index = parse_sections_result
 
         kernel = context.modules[vmlinux_name]
 
