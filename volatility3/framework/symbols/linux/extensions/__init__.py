@@ -217,6 +217,11 @@ class module(generic.GenericIntelProcess):
 
     def get_sections(self) -> Iterable[interfaces.objects.ObjectInterface]:
         """Get a list of section attributes for the given module."""
+        if self.number_of_sections == 0:
+            vollog.debug(
+                f"Invalid number of sections ({self.number_of_sections}) for module at offset {self.vol.offset:#x}"
+            )
+            return []
 
         symbol_table_name = self.get_symbol_table_name()
         arr = self._context.object(
