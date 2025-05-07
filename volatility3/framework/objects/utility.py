@@ -4,7 +4,7 @@
 
 import re
 
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 from volatility3.framework import interfaces, objects, constants, exceptions
 
@@ -260,7 +260,7 @@ def dynamically_sized_array_of_pointers(
     stop_value: int = 0,
     iterator_guard_value: int = None,
     stop_on_invalid_pointers: bool = True,
-) -> interfaces.objects.ObjectInterface:
+) -> List[interfaces.objects.ObjectInterface]:
     """Iterates over a dynamically sized array of pointers (e.g. NULL-terminated).
 
         Args:
@@ -272,6 +272,9 @@ def dynamically_sized_array_of_pointers(
             iterator_guard_value: Stop iterating when the iterator index is greater than this value. This is an extra-safety against smearing.
             stop_on_invalid_pointers: Determines whether to stop iterating or not when an invalid pointer is encountered. This can be useful for arrays
     that are known to have smeared entries before the end.
+
+        Returns:
+            An array of pointer objects
     """
     pointer_type = context.symbol_space.get_type(
         symbol_table_name + constants.BANG + "pointer"
