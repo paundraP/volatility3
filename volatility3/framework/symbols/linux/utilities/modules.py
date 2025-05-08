@@ -1,6 +1,7 @@
 import logging
 import warnings
 from abc import ABCMeta, abstractmethod
+import functools
 from typing import (
     Callable,
     Dict,
@@ -71,7 +72,7 @@ class ModuleGathererInterface(
 class Modules(interfaces.configuration.VersionableInterface):
     """Kernel modules related utilities."""
 
-    _version = (3, 0, 1)
+    _version = (3, 0, 2)
     _required_framework_version = (2, 0, 0)
 
     framework.require_interface_version(*_required_framework_version)
@@ -311,6 +312,7 @@ class Modules(interfaces.configuration.VersionableInterface):
         return run_results
 
     @staticmethod
+    @functools.lru_cache
     def get_modules_memory_boundaries(
         context: interfaces.context.ContextInterface,
         vmlinux_module_name: str,
