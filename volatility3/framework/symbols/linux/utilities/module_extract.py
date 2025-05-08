@@ -263,9 +263,9 @@ class ModuleExtract(interfaces.configuration.VersionableInterface):
         for index, section in enumerate(module.get_sections()):
             # Extra sanity check, to prevent OOM on heavily smeared samples at line
             # "size = next_address - address"
-            if (
-                not modules_addr_min
-                <= kernel_layer.address_mask & section.address
+            if not (
+                modules_addr_min
+                <= section.address & kernel_layer.address_mask
                 < modules_addr_max
             ):
                 continue
