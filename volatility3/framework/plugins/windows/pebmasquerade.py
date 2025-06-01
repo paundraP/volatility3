@@ -1,0 +1,328 @@
+import logging
+import re
+from pathlib import PureWindowsPath
+from typing import List, Union, Tuple
+
+from volatility3.framework import interfaces, renderers, exceptions
+from volatility3.framework.configuration import requirements
+from volatility3.plugins.windows import pslist
+
+vollog = logging.getLogger(__name__)
+
+
+# https://www.ired.team/offensive-security/defense-evasion/masquerading-processes-in-userland-through-_peb
+# https://github.com/FuzzySecurity/PowerShell-Suite/blob/master/Masquerade-PEB.ps1
+class PebMasquerade(interfaces.plugins.PluginInterface):
+    """Detects potential process name spoofing by comparing EPROCESS and PEB data."""
+
+    _version = (1, 0, 0)
+    _required_framework_version = (2, 0, 0)
+
+    @classmethod
+    def get_requirements(cls) -> List[interfaces.configuration.RequirementInterface]:
+        return [
+            requirements.ModuleRequirement(
+                name="kernel",
+                description="Windows kernel",
+                architectures=["Intel32", "Intel64"],
+            ),
+            requirements.VersionRequirement(
+                name="pslist", component=pslist.PsList, version=(3, 0, 0)
+            ),
+            requirements.ListRequirement(
+                name="pid",
+                element_type=int,
+                description="Process ID to include (all other processes are excluded)",
+                optional=True,
+            ),
+        ]
+
+    @staticmethod
+    def _get_cmdline_image(cmdline: str) -> Union[str, PureWindowsPath]:
+        """Extract the executable path from a command line string.
+
+        Args:
+            cmdline (str): The command line string to parse.
+
+        Returns:
+            Union[str, PureWindowsPath]: The executable path as a string or PureWindowsPath.
+        """
+        if not cmdline:
+            return ""
+
+        # Regex to extract first .exe ending string (handles quotes, paths, no quotes)
+        match = re.search(r'(?i)(["\']?)([^"\']*?\.exe)\1(?=\s|$)', cmdline)
+        if match:
+            exe_path = match.group(2)
+            return PureWindowsPath(exe_path)
+
+        # If no .exe found, extract the first token (handles quotes)
+        # Matches either "quoted string" or unquoted word
+        first_token_match = re.match(r'\s*(?:"([^"]+)"|\'([^\']+)\'|(\S+))', cmdline)
+        if first_token_match:
+            # Extract whichever group matched
+            executable = (
+                first_token_match.group(1)
+                or first_token_match.group(2)
+                or first_token_match.group(3)
+            )
+            return PureWindowsPath(executable).name + ".exe"
+
+        return ""
+
+    @staticmethod
+    def _are_paths_equal(device_path: str, drive_path: str) -> Tuple[bool, str, str]:
+        """Compare two paths to see if they are equal, ignoring drive/device root and case.
+
+        Args:
+            device_path (str): The device path (e.g. "\\Device\\HarddiskVolume1\\path")
+            drive_path (str): The drive path (e.g. "C:\\path")
+
+        Returns:
+            tuple: (are_equal, device_path_without_drive, drive_path_without_drive)
+                - are_equal (bool): True if paths are equal, False otherwise
+                - device_path_without_drive (str): Device path without drive letter
+                - drive_path_without_drive (str): Drive path without drive letter
+        """
+        pure_device_path = PureWindowsPath(device_path)
+        pure_drive_path = PureWindowsPath(drive_path)
+        device_parts = list(pure_device_path.parts)
+        drive_parts = list(pure_drive_path.parts)
+
+        if pure_drive_path.is_absolute():
+            new_drive_path = "/".join(drive_parts[1:]).lower()
+            new_device_path = "/".join(device_parts[3:]).lower()
+        else:
+            new_drive_path = "/".join(drive_parts[2:]).lower()
+            new_device_path = "/".join(device_parts[4:]).lower()
+
+        return (
+            new_drive_path == new_device_path,
+            new_device_path,
+            new_drive_path,
+        )
+
+    def get_process_names(self, proc: interfaces.objects.ObjectInterface) -> Tuple[
+        Union[str, renderers.NotAvailableValue],
+        Union[str, renderers.NotAvailableValue],
+        Union[str, renderers.NotAvailableValue],
+        Union[str, renderers.NotAvailableValue],
+    ]:
+        """Extract process names and related information from various sources (EPROCESS and PEB).
+
+        Args:
+            proc: The process object
+
+        Returns:
+            tuple: (eprocess_imagefilename, eprocess_seaudit_imagefilename, peb_imagefilepath, peb_cmdline)
+        """
+        eprocess_imagefilename = renderers.NotAvailableValue()
+        eprocess_seaudit_imagefilename = renderers.NotAvailableValue()
+        peb_imagefilepath = renderers.NotAvailableValue()
+        peb_cmdline = renderers.NotAvailableValue()
+
+        try:
+            eprocess_imagefilename = proc.ImageFileName.cast(
+                "string",
+                max_length=proc.ImageFileName.vol.count,
+                errors="replace",
+            )
+        except (AttributeError, exceptions.InvalidAddressException):
+            vollog.debug(
+                "Unable to read EPROCESS.ImageFileName for PID %d", proc.UniqueProcessId
+            )
+        except Exception as e:
+            vollog.warning(
+                "Error reading EPROCESS.ImageFileName for PID %d: %s",
+                proc.UniqueProcessId,
+                str(e)[:50],
+            )
+
+        try:
+            audit = proc.SeAuditProcessCreationInfo.ImageFileName.Name
+            audit_string = audit.get_string()
+            if audit_string:
+                eprocess_seaudit_imagefilename = audit_string
+        except exceptions.InvalidAddressException:
+            vollog.debug(
+                "Unable to read SeAuditProcessCreationInfo.ImageFileName for PID %d",
+                proc.UniqueProcessId,
+            )
+        except AttributeError:
+            vollog.debug(
+                "SeAuditProcessCreationInfo structure not available for PID %d",
+                proc.UniqueProcessId,
+            )
+        except Exception as e:
+            vollog.warning(
+                "Error reading SeAuditProcessCreationInfo for PID %d: %s",
+                proc.UniqueProcessId,
+                str(e)[:50],
+            )
+
+        try:
+            peb = proc.get_peb()
+            if peb and peb.ProcessParameters:
+                # Get ImagePathName
+                try:
+                    image_path_str = peb.ProcessParameters.ImagePathName.get_string()
+                    if image_path_str:
+                        peb_imagefilepath = image_path_str
+                except (AttributeError, exceptions.InvalidAddressException):
+                    vollog.debug(
+                        "Unable to read PEB.ImagePathName for PID %d",
+                        proc.UniqueProcessId,
+                    )
+                except Exception as e:
+                    vollog.warning(
+                        "Error reading PEB.ImagePathName for PID %d: %s",
+                        proc.UniqueProcessId,
+                        str(e)[:50],
+                    )
+
+                try:
+                    cmdline_str = peb.ProcessParameters.CommandLine.get_string()
+                    if cmdline_str:
+                        peb_cmdline = cmdline_str
+                except (AttributeError, exceptions.InvalidAddressException):
+                    vollog.debug(
+                        "Unable to read PEB.ProcessParameters.CommandLine for PID %d",
+                        proc.UniqueProcessId,
+                    )
+                except Exception as e:
+                    vollog.warning(
+                        "Error reading PEB.ProcessParameters.CommandLine for PID %d: %s",
+                        proc.UniqueProcessId,
+                        str(e)[:50],
+                    )
+        except (AttributeError, exceptions.InvalidAddressException):
+            # Important for cases where PEB does not exist or is inaccessible (e.g SYSTEM process)
+            vollog.debug("Unable to access PEB for PID %d", proc.UniqueProcessId)
+        except Exception as e:
+            vollog.warning(
+                "Error accessing PEB for PID %d: %s", proc.UniqueProcessId, str(e)[:50]
+            )
+
+        return (
+            eprocess_imagefilename,
+            eprocess_seaudit_imagefilename,
+            peb_imagefilepath,
+            peb_cmdline,
+        )
+
+    def _generator(self):
+        pid_filter = pslist.PsList.create_pid_filter(self.config.get("pid", None))
+
+        for proc in pslist.PsList.list_processes(
+            context=self.context,
+            kernel_module_name=self.config["kernel"],
+            filter_func=pid_filter,
+        ):
+            proc_id = proc.UniqueProcessId
+            notes = []
+
+            (
+                eprocess_imagefilename,
+                eprocess_seaudit_imagefilename,
+                peb_imagefilepath,
+                peb_cmdline,
+            ) = self.get_process_names(proc)
+            proc_name_for_row = eprocess_imagefilename
+
+            # Extract command line executable path for rendering
+            peb_cmdline_path_render = renderers.NotAvailableValue()
+            if isinstance(peb_cmdline, str):
+                try:
+                    peb_cmdline_path_render = str(
+                        PebMasquerade._get_cmdline_image(peb_cmdline)
+                    )
+                except Exception as e:
+                    vollog.debug(
+                        "Error extracting command line path for PID %d: %s",
+                        proc_id,
+                        str(e)[:50],
+                    )
+
+            # Populate notes for enrichment
+            if isinstance(eprocess_imagefilename, str) and isinstance(
+                peb_imagefilepath, str
+            ):
+                try:
+                    peb_imagefilepath_basename = PureWindowsPath(peb_imagefilepath).name
+                    peb_imagefilepath_truncated = peb_imagefilepath_basename[:14]
+
+                    # Compare EPROCESS.ImageFileName with PEB.ImageFilePath truncated to 15 characters
+                    if (
+                        eprocess_imagefilename.lower()
+                        != peb_imagefilepath_truncated.lower()
+                    ):
+                        notes.append(
+                            f"'Potential PEB.ImageFilePath Spoofing: EPROCESS={eprocess_imagefilename};PEB={peb_imagefilepath_truncated}'"
+                        )
+                except Exception as e:
+                    notes.append(f"ImageFilePath Comparison error: {str(e)[:30]}")
+
+            if isinstance(eprocess_imagefilename, str) and isinstance(peb_cmdline, str):
+                try:
+                    # Compare EPROCESS.ImageFileName with PEB.CommandLine executable path truncated to 15 characters
+                    peb_cmdline_path = PebMasquerade._get_cmdline_image(peb_cmdline)
+                    if isinstance(peb_cmdline_path, PureWindowsPath):
+                        peb_cmdline_path = peb_cmdline_path.name
+                    peb_cmdline_basename_truncated = peb_cmdline_path[:14]
+                    if (
+                        eprocess_imagefilename.lower()
+                        != peb_cmdline_basename_truncated.lower()
+                    ):
+                        notes.append(
+                            f"'Potential PEB.CommandLine Spoofing: EPROCESS={eprocess_imagefilename};PEB={peb_cmdline_basename_truncated}'"
+                        )
+                except Exception as e:
+                    notes.append(f"CommandLine comparison error: {str(e)}")
+
+            if isinstance(eprocess_seaudit_imagefilename, str) and isinstance(
+                peb_imagefilepath, str
+            ):
+                try:
+                    (
+                        are_equal,
+                        eprocess_seaudit_normalized,
+                        peb_imagefilepath_normalized,
+                    ) = PebMasquerade._are_paths_equal(
+                        device_path=eprocess_seaudit_imagefilename,
+                        drive_path=peb_imagefilepath,
+                    )
+                    if not are_equal:
+                        notes.append(
+                            f"'Potential PEB.ImageFilePath Spoofing (via _EPROCESS.SeAuditProcessCreationInfo): EPROCESS={eprocess_seaudit_normalized};PEB={peb_imagefilepath_normalized}'"
+                        )
+                except Exception as e:
+                    notes.append(
+                        f"SeAuditProcessCreationInfo comparison error: {str(e)[:30]}"
+                    )
+
+            yield (
+                0,
+                (
+                    proc_id,
+                    proc_name_for_row,
+                    eprocess_imagefilename,
+                    eprocess_seaudit_imagefilename,
+                    peb_imagefilepath,
+                    peb_cmdline_path_render,
+                    "[" + ", ".join(notes) + "]" if notes else "OK",
+                ),
+            )
+
+    def run(self):
+        return renderers.TreeGrid(
+            [
+                ("PID", int),
+                ("ProcessName", str),
+                ("EPROCESS_ImageFileName", str),
+                ("EPROCESS_SeAudit_ImageFileName", str),
+                ("PEB_ImageFilePath", str),
+                ("PEB_CommandLine_Path", str),
+                ("Notes", str),
+            ],
+            self._generator(),
+        )
