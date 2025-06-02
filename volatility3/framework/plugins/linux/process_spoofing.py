@@ -60,14 +60,12 @@ class ProcessSpoofing(plugins.PluginInterface):
         try:
             mm = task.mm
             if not mm or not mm.is_readable():
-                # Kernel threads doesn't have
+                # Kernel threads doesn't have mm
                 return None
 
             exe_file = mm.exe_file
             if not exe_file or not exe_file.is_readable():
                 return None
-
-            # Use LinuxUtilities.path_for_file to extract the path
             exe_path = linux.LinuxUtilities.path_for_file(self.context, task, exe_file)
 
             return exe_path if exe_path else None
@@ -97,15 +95,12 @@ class ProcessSpoofing(plugins.PluginInterface):
                 return None
 
             proc_layer = self.context.layers[proc_layer_name]
-
-            # Read argv from userland
             start = task.mm.arg_start
             size_to_read = task.mm.arg_end - task.mm.arg_start
 
             if not (0 < size_to_read <= 4096):
                 return None
 
-            # Attempt to read command line arguments
             try:
                 argv = proc_layer.read(start, size_to_read)
             except exceptions.InvalidAddressException:
@@ -176,7 +171,7 @@ class ProcessSpoofing(plugins.PluginInterface):
         """
         notes = []
 
-        # Count how many name sources we have
+        # Skip kernel threads
         available_sources = sum(
             1 for name in [exe_basename, cmdline_basename, comm] if name
         )
