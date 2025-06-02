@@ -1,0 +1,253 @@
+# This file is Copyright 2025 Volatility Foundation and licensed under the Volatility Software License 1.0
+# which is available at https://www.volatilityfoundation.org/license/vsl-v1.0
+#
+
+import logging
+from pathlib import PurePosixPath
+from typing import Optional, Tuple, Iterator
+
+from volatility3.framework import exceptions, interfaces, renderers
+from volatility3.framework.configuration import requirements
+from volatility3.framework.interfaces import plugins
+from volatility3.framework.objects import utility
+from volatility3.framework.symbols import linux
+from volatility3.plugins.linux import pslist
+
+vollog = logging.getLogger(__name__)
+
+
+# https://github.com/SolitudePy/linux-mal
+class ProcessSpoofing(plugins.PluginInterface):
+    """Detects process spoofing by comparing executable path to cmdline & comm fields"""
+
+    _required_framework_version = (2, 0, 0)
+    _version = (1, 0, 0)
+
+    @classmethod
+    def get_requirements(cls):
+        return [
+            requirements.ModuleRequirement(
+                name="kernel",
+                description="Linux kernel",
+                architectures=["Intel32", "Intel64"],
+            ),
+            requirements.VersionRequirement(
+                name="pslist", component=pslist.PsList, version=(4, 0, 0)
+            ),
+            requirements.VersionRequirement(
+                name="linuxutils", component=linux.LinuxUtilities, version=(2, 0, 0)
+            ),
+            requirements.ListRequirement(
+                name="pid",
+                description="Filter on specific process IDs",
+                element_type=int,
+                optional=True,
+            ),
+        ]
+
+    def _get_executable_path(
+        self, task: interfaces.objects.ObjectInterface
+    ) -> Optional[str]:
+        """
+        Extract the executable path from task_struct.mm.exe_file
+
+        Args:
+            task: task_struct object of the process
+
+        Returns:
+            Executable path or None if not available
+        """
+        try:
+            mm = task.mm
+            if not mm or not mm.is_readable():
+                # Kernel threads doesn't have
+                return None
+
+            exe_file = mm.exe_file
+            if not exe_file or not exe_file.is_readable():
+                return None
+
+            # Use LinuxUtilities.path_for_file to extract the path
+            exe_path = linux.LinuxUtilities.path_for_file(self.context, task, exe_file)
+
+            return exe_path if exe_path else None
+
+        except (exceptions.InvalidAddressException, AttributeError):
+            return None
+
+    def _get_cmdline_basename(
+        self, task: interfaces.objects.ObjectInterface
+    ) -> Optional[str]:
+        """
+        Extract the command line arguments and return the basename of the first argument
+
+        Args:
+            task: task_struct object of the process
+
+        Returns:
+            Basename of the first command line argument or None if not available
+        """
+        try:
+            mm = task.mm
+            if not mm or not mm.is_readable():
+                return renderers.NotAvailableValue()
+
+            proc_layer_name = task.add_process_layer()
+            if proc_layer_name is None:
+                return None
+
+            proc_layer = self.context.layers[proc_layer_name]
+
+            # Read argv from userland
+            start = task.mm.arg_start
+            size_to_read = task.mm.arg_end - task.mm.arg_start
+
+            if not (0 < size_to_read <= 4096):
+                return None
+
+            # Attempt to read command line arguments
+            try:
+                argv = proc_layer.read(start, size_to_read)
+            except exceptions.InvalidAddressException:
+                return None
+
+            # Parse the arguments - they are null byte terminated
+            args_str = argv.decode(encoding="utf8", errors="replace")
+            args_list = args_str.split("\x00")
+            if args_list and args_list[0]:
+                basename = PurePosixPath(args_list[0]).name
+                return basename
+            else:
+                return None
+
+        except (exceptions.InvalidAddressException, AttributeError):
+            return None
+
+    def _get_comm(self, task: interfaces.objects.ObjectInterface) -> Optional[str]:
+        """
+        Extract the comm field from task_struct
+
+        Args:
+            task: task_struct object of the process
+
+        Returns:
+            Process name from comm field or None if not available
+        """
+        try:
+            return utility.array_to_string(task.comm)
+        except (exceptions.InvalidAddressException, AttributeError):
+            return None
+
+    def _extract_process_names(
+        self, task: interfaces.objects.ObjectInterface
+    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """
+        Extract all three process name sources for comparison
+
+        Args:
+            task: task_struct object of the process
+
+        Returns:
+            Tuple of (exe_path_basename, cmdline_basename, comm)
+        """
+        exe_path = self._get_executable_path(task)
+        exe_basename = PurePosixPath(exe_path).name
+        cmdline_basename = self._get_cmdline_basename(task)
+        comm = self._get_comm(task)
+
+        return exe_basename, cmdline_basename, comm
+
+    def _detect_spoofing(
+        self,
+        exe_basename: Optional[str],
+        cmdline_basename: Optional[str],
+        comm: Optional[str],
+    ) -> Optional[list]:
+        """
+        Analyze the three name sources to detect potential spoofing
+
+        Args:
+            exe_basename: Basename from exe_file path
+            cmdline_basename: Basename from command line
+            comm: Name from comm field
+
+        Returns:
+            notes: List of notes indicating potential spoofing, or None if no issues found
+        """
+        notes = []
+
+        # Count how many name sources we have
+        available_sources = sum(
+            1 for name in [exe_basename, cmdline_basename, comm] if name
+        )
+
+        if available_sources < 2:
+            return None
+
+        if exe_basename != cmdline_basename:
+            notes.append(
+                f"'Potential cmdline spoofing: exe_file={exe_basename};cmdline={cmdline_basename}'"
+            )
+        if exe_basename[:15] != comm:
+            notes.append(
+                f"'Potential comm spoofing: exe_file={exe_basename};comm={comm}'"
+            )
+        return notes
+
+    def _generator(self, tasks) -> Iterator[Tuple[int, Tuple]]:
+        """
+        Generate process spoofing detection results
+
+        Args:
+            tasks: Iterator of task_struct objects
+
+        Yields:
+            Tuple containing process information and spoofing analysis
+        """
+        for task in tasks:
+            try:
+                pid = task.pid
+                ppid = task.get_parent_pid()
+
+                exe_basename, cmdline_basename, comm = self._extract_process_names(task)
+
+                notes = self._detect_spoofing(exe_basename, cmdline_basename, comm)
+
+                exe_render = exe_basename if exe_basename else "N/A"
+                cmdline_render = cmdline_basename if cmdline_basename else "N/A"
+                comm_render = comm if comm else "N/A"
+
+                yield (
+                    0,
+                    (
+                        pid,
+                        ppid,
+                        exe_render,
+                        cmdline_render,
+                        comm_render,
+                        "[" + ", ".join(notes) + "]" if notes else "OK",
+                    ),
+                )
+
+            except Exception as e:
+                vollog.debug(f"Error processing task at {task.vol.offset:#x}: {e}")
+                continue
+
+    def run(self):
+        filter_func = pslist.PsList.create_pid_filter(self.config.get("pid", None))
+
+        return renderers.TreeGrid(
+            [
+                ("PID", int),
+                ("PPID", int),
+                ("Exe_Basename", str),
+                ("Cmdline_Basename", str),
+                ("Comm", str),
+                ("Notes", str),
+            ],
+            self._generator(
+                pslist.PsList.list_tasks(
+                    self.context, self.config["kernel"], filter_func=filter_func
+                )
+            ),
+        )
