@@ -101,6 +101,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
 
     _version = (2, 3, 1)
     _required_framework_version = (2, 0, 0)
+    deleted = " (deleted)"
 
     framework.require_interface_version(*_required_framework_version)
 
@@ -168,6 +169,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
             # vfsmnt can be the vfsmount object itself (>=3.3) or a vfsmount * (<3.3)
             return ""
 
+        inode = dentry.d_inode
         path_reversed = []
         smeared = False
         while (
@@ -191,6 +193,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
 
             parent = dentry.d_parent
             dname = dentry.d_name.name_as_str()
+
             # empty dentry names are most likely
             # the result of smearing
             if not dname:
@@ -204,6 +207,9 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
             # path would be /foo/bar/baz, but bar is missing due to smear the results
             # returned here will show /foo//baz. Note the // for the missing dname.
             return f"<potentially smeared> {path}"
+        print(path, inode.i_nlink)
+        if inode and inode.is_readable() and inode.is_valid() and inode.i_nlink == 0:
+            path += LinuxUtilities.deleted
         return path
 
     @classmethod
@@ -260,7 +266,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
                     pre_name = name.dereference().cast(
                         "string", max_length=255, errors="replace"
                     )
-                    return "/" + pre_name + " (deleted)"
+                    return "/" + pre_name + LinuxUtilities.deleted
                 else:
                     pre_name = ""
 
@@ -301,7 +307,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
         return f"{pre_name}:[{inode.i_ino:d}]"
 
     @classmethod
-    def path_for_file(cls, context, task, filp) -> str:
+    def path_for_file(cls, context, task, filp, files_only) -> str:
         """Returns a file (or sock pipe) pathname relative to the task's root directory.
 
         A 'file' structure doesn't have enough information to properly restore its
@@ -340,7 +346,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
         except exceptions.InvalidAddressException:
             dname_is_valid = False
 
-        if dname_is_valid:
+        if dname_is_valid and not files_only:
             ret = LinuxUtilities._get_new_sock_pipe_path(context, task, filp)
         else:
             ret = LinuxUtilities._get_path_file(task, filp)
@@ -353,6 +359,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
         context: interfaces.context.ContextInterface,
         symbol_table: str,
         task: interfaces.objects.ObjectInterface,
+        files_only: bool = False,
     ):
         try:
             files = task.files
@@ -376,7 +383,9 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
 
         for fd_num, filp in enumerate(fds):
             if filp and filp.is_readable():
-                full_path = LinuxUtilities.path_for_file(context, task, filp)
+                full_path = LinuxUtilities.path_for_file(
+                    context, task, filp, files_only
+                )
 
                 yield fd_num, filp, full_path
 

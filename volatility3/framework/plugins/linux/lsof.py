@@ -137,6 +137,12 @@ class Lsof(plugins.PluginInterface, timeliner.TimeLinerInterface):
                 element_type=int,
                 optional=True,
             ),
+            requirements.BooleanRequirement(
+                name="files_only",
+                description="Include only file descriptors of type file",
+                optional=True,
+                default=False,
+            ),
         ]
 
     @classmethod
@@ -145,6 +151,7 @@ class Lsof(plugins.PluginInterface, timeliner.TimeLinerInterface):
         context: interfaces.context.ContextInterface,
         vmlinux_module_name: str,
         filter_func: Callable[[int], bool] = lambda _: False,
+        include_files_only: bool = False,
     ) -> Iterable[FDInternal]:
         """Enumerates open file descriptors in tasks
 
@@ -167,7 +174,7 @@ class Lsof(plugins.PluginInterface, timeliner.TimeLinerInterface):
                 linuxutils_symbol_table = task.vol.type_name.split(constants.BANG)[0]
 
             fd_generator = linux.LinuxUtilities.files_descriptors_for_process(
-                context, linuxutils_symbol_table, task
+                context, linuxutils_symbol_table, task, files_only=include_files_only
             )
 
             for fd_fields in fd_generator:
@@ -175,8 +182,12 @@ class Lsof(plugins.PluginInterface, timeliner.TimeLinerInterface):
 
     def _generator(self, pids, vmlinux_module_name):
         filter_func = pslist.PsList.create_pid_filter(pids)
+        include_files_only = self.config.get("files_only")
         for fd_internal in self.list_fds(
-            self.context, vmlinux_module_name, filter_func=filter_func
+            self.context,
+            vmlinux_module_name,
+            filter_func=filter_func,
+            include_files_only=include_files_only,
         ):
             fd_user = fd_internal.to_user()
             yield (0, dataclasses.astuple(fd_user))
