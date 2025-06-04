@@ -207,7 +207,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
             # path would be /foo/bar/baz, but bar is missing due to smear the results
             # returned here will show /foo//baz. Note the // for the missing dname.
             return f"<potentially smeared> {path}"
-        
+
         if inode and inode.is_readable() and inode.is_valid() and inode.i_nlink == 0:
             path += LinuxUtilities.deleted
         return path
