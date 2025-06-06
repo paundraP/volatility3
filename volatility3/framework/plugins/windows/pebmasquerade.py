@@ -5,6 +5,7 @@ from typing import List, Union, Tuple
 
 from volatility3.framework import interfaces, renderers, exceptions
 from volatility3.framework.configuration import requirements
+from volatility3.framework.objects import utility
 from volatility3.plugins.windows import pslist
 
 vollog = logging.getLogger(__name__)
@@ -122,11 +123,7 @@ class PebMasquerade(interfaces.plugins.PluginInterface):
         peb_cmdline = renderers.NotAvailableValue()
 
         try:
-            eprocess_imagefilename = proc.ImageFileName.cast(
-                "string",
-                max_length=proc.ImageFileName.vol.count,
-                errors="replace",
-            )
+            eprocess_imagefilename = utility.array_to_string(proc.ImageFileName)
         except (AttributeError, exceptions.InvalidAddressException):
             vollog.debug(
                 "Unable to read EPROCESS.ImageFileName for PID %d", proc.UniqueProcessId
