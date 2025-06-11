@@ -99,7 +99,7 @@ class LinuxKernelIntermedSymbols(intermed.IntermediateSymbolTable):
 class LinuxUtilities(interfaces.configuration.VersionableInterface):
     """Class with multiple useful linux functions."""
 
-    _version = (2, 3, 1)
+    _version = (2, 4, 0)
     _required_framework_version = (2, 0, 0)
     deleted = "<deleted>"
 
@@ -307,7 +307,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
         return f"{pre_name}:[{inode.i_ino:d}]"
 
     @classmethod
-    def path_for_file(cls, context, task, filp, files_only) -> str:
+    def path_for_file(cls, context, task, filp, files_only=False) -> str:
         """Returns a file (or sock pipe) pathname relative to the task's root directory.
 
         A 'file' structure doesn't have enough information to properly restore its
