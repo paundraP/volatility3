@@ -180,9 +180,9 @@ class Lsof(plugins.PluginInterface, timeliner.TimeLinerInterface):
             for fd_fields in fd_generator:
                 yield FDInternal(task=task, fd_fields=fd_fields)
 
-    def _generator(self, pids, vmlinux_module_name):
+    def _generator(self, pids, vmlinux_module_name, include_files_only):
         filter_func = pslist.PsList.create_pid_filter(pids)
-        include_files_only = self.config.get("files_only")
+
         for fd_internal in self.list_fds(
             self.context,
             vmlinux_module_name,
@@ -195,6 +195,7 @@ class Lsof(plugins.PluginInterface, timeliner.TimeLinerInterface):
     def run(self):
         pids = self.config.get("pid", None)
         vmlinux_module_name = self.config["kernel"]
+        include_files_only = self.config.get("files_only")
 
         tree_grid_args = [
             ("PID", int),
@@ -212,7 +213,10 @@ class Lsof(plugins.PluginInterface, timeliner.TimeLinerInterface):
             ("Size", int),
         ]
         return renderers.TreeGrid(
-            tree_grid_args, self._generator(pids, vmlinux_module_name)
+            tree_grid_args,
+            self._generator(
+                pids, vmlinux_module_name, include_files_only=include_files_only
+            ),
         )
 
     def generate_timeline(self):
