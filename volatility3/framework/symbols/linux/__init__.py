@@ -101,7 +101,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
 
     _version = (2, 3, 1)
     _required_framework_version = (2, 0, 0)
-    deleted = " (deleted)"
+    deleted = "<deleted>"
 
     framework.require_interface_version(*_required_framework_version)
 
@@ -209,7 +209,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
             return f"<potentially smeared> {path}"
 
         if inode and inode.is_readable() and inode.is_valid() and inode.i_nlink == 0:
-            path += LinuxUtilities.deleted
+            path = f"{LinuxUtilities.deleted} {path}"
         return path
 
     @classmethod
@@ -266,7 +266,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
                     pre_name = name.dereference().cast(
                         "string", max_length=255, errors="replace"
                     )
-                    return "/" + pre_name + LinuxUtilities.deleted
+                    return f"{LinuxUtilities.deleted} /{pre_name}"
                 else:
                     pre_name = ""
 
