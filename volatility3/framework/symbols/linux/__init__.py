@@ -102,6 +102,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
     _version = (2, 4, 0)
     _required_framework_version = (2, 0, 0)
     deleted = "<deleted>"
+    smear = "<potentially smeared>"
 
     framework.require_interface_version(*_required_framework_version)
 
@@ -206,7 +207,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
             # if there is smear the missing dname will be empty. e.g. if the normal
             # path would be /foo/bar/baz, but bar is missing due to smear the results
             # returned here will show /foo//baz. Note the // for the missing dname.
-            return f"<potentially smeared> {path}"
+            return f"{LinuxUtilities.smear} {path}"
 
         if inode and inode.is_readable() and inode.is_valid() and inode.i_nlink == 0:
             path = f"{LinuxUtilities.deleted} {path}"
