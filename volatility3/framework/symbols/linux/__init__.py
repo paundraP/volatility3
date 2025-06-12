@@ -266,7 +266,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
                     pre_name = name.dereference().cast(
                         "string", max_length=255, errors="replace"
                     )
-                    return f"{LinuxUtilities.deleted} /{pre_name}"
+                    return "/" + pre_name + " (deleted)"
                 else:
                     pre_name = ""
 

@@ -1253,9 +1253,7 @@ class vm_area_struct(objects.StructType):
 
     def _do_get_name(self, context, task) -> str:
         if self.vm_file != 0:
-            fname = linux.LinuxUtilities.path_for_file(
-                context, task, self.vm_file, files_only=False
-            )
+            fname = linux.LinuxUtilities.path_for_file(context, task, self.vm_file)
         elif self.vm_start <= task.mm.start_brk and self.vm_end >= task.mm.brk:
             fname = "[heap]"
         elif self.vm_start <= task.mm.start_stack <= self.vm_end:
