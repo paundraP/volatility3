@@ -1273,20 +1273,22 @@ class vm_area_struct(objects.StructType):
         except exceptions.InvalidAddressException:
             return None
 
-    def get_malicious_pages(self,proclayer=None):
+    def get_malicious_pages(self, proclayer=None):
         """
         This function will return a list of all malicious pages inside a given dirty region
         """
         malicious_pages = []
         flags_str = self.get_protection()
 
-        if proclayer and "r-x" in flags_str and self.vm_file.dereference().vol.offset !=0:
+        if (
+            proclayer
+            and "r-x" in flags_str
+            and self.vm_file.dereference().vol.offset != 0
+        ):
             for i in range(self.vm_start, self.vm_end, proclayer.page_size):
                 try:
                     if proclayer.is_dirty(i):
-                        vollog.debug(
-                            f"Found malicious (dirty+exec) page at {hex(i)} !"
-                        )
+                        vollog.debug(f"Found malicious (dirty+exec) page at {hex(i)} !")
                         malicious_pages.append(i)
                 except (
                     exceptions.PagedInvalidAddressException,
