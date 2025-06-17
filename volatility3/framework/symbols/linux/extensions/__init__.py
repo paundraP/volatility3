@@ -1273,6 +1273,32 @@ class vm_area_struct(objects.StructType):
         except exceptions.InvalidAddressException:
             return None
 
+    def get_malicious_pages(self,proclayer=None):
+        malicious_pages = []
+
+        flags_str = self.get_protection()
+
+        if flags_str == "rwx":
+            ret = True
+        elif flags_str == "r-x" and self.vm_file.dereference().vol.offset == 0:
+            ret = True
+        elif proclayer and "x" in flags_str:
+            for i in range(self.vm_start, self.vm_end, proclayer.page_size):
+                try:
+                    if proclayer.is_dirty(i):
+                        vollog.debug(
+                            f"Found malicious (dirty+exec) page at {hex(i)} !"
+                        )
+                        malicious_pages.append(i)
+                except (
+                    exceptions.PagedInvalidAddressException,
+                    exceptions.InvalidAddressException,
+                ) as excp:
+                    vollog.debug(f"Unable to translate address {hex(i)} : {excp}")
+                    # Abort as it is likely that other addresses in the same range will also fail
+                    break
+        return malicious_pages
+
     # used by malfind
     def is_suspicious(self, proclayer=None):
         ret = False
@@ -1288,7 +1314,7 @@ class vm_area_struct(objects.StructType):
                 try:
                     if proclayer.is_dirty(i):
                         vollog.warning(
-                            f"Found malicious (dirty+exec) page at {hex(i)} !"
+                            f"Found malicious page(s) inside (dirty+exec) region {hex(self.vm_start)} !"
                         )
                         # We do not attempt to find other dirty+exec pages once we have found one
                         ret = True
@@ -2733,6 +2759,7 @@ class page(objects.StructType):
         for name, value in self.pageflags_enum.items():
             if self.flags & (1 << value) != 0:
                 flags.append(name)
+                print(name,value)
 
         return flags
 
