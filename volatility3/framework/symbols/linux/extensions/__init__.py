@@ -1284,7 +1284,7 @@ class vm_area_struct(objects.StructType):
             for i in range(self.vm_start, self.vm_end, proclayer.page_size):
                 try:
                     if proclayer.is_dirty(i):
-                        vollog.warning(
+                        vollog.debug(
                             f"Found malicious (dirty+exec) page at {hex(i)} !"
                         )
                         malicious_pages.append(i)
@@ -2757,7 +2757,6 @@ class page(objects.StructType):
         for name, value in self.pageflags_enum.items():
             if self.flags & (1 << value) != 0:
                 flags.append(name)
-                print(name,value)
 
         return flags
 
