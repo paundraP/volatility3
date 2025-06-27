@@ -748,11 +748,11 @@ class ParquetRenderer(ArrowRenderer):
     def write_data(self, t: pa.Table, outfd: TextIO) -> None:
         """
         Writes a table to stdout using the Parquet format.
-        
+
         Args:
             t: The Arrow table to write
             outfd: The output file descriptor
-            
+
         Returns:
             Nothing
         """
