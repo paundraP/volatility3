@@ -666,6 +666,8 @@ class ArrowRenderer(CLIRenderer):
             format_hints.Hex: pa.int64,
             format_hints.MultiTypeData: pa.utf8,
             format_hints.HexBytes: pa.binary,
+            renderers.LayerData: pa.binary,
+            bytes: pa.binary,
         }
 
     name = "arrow"
@@ -726,6 +728,9 @@ class ArrowRenderer(CLIRenderer):
 
                 if isinstance(data, renderers.Disassembly):
                     data = display_disassembly(data)
+
+                if isinstance(data, renderers.LayerData):
+                    data = LayerDataRenderer().render_bytes(data)[0]
 
                 node_dict[column.name] = data
                 line.append(data)
