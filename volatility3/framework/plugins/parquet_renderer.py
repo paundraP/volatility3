@@ -13,7 +13,11 @@ from typing import (
 )
 from volatility3.framework import interfaces, renderers
 from volatility3.framework.renderers import format_hints
-from volatility3.cli.text_renderer import CLIRenderer, display_disassembly, LayerDataRenderer
+from volatility3.cli.text_renderer import (
+    CLIRenderer,
+    display_disassembly,
+    LayerDataRenderer,
+)
 
 vollog = logging.getLogger(__name__)
 
@@ -24,6 +28,7 @@ try:
 except ImportError:
     ARROW_PRESENT = False
     vollog.debug("Arrow/Parquet libraries not found")
+
 
 class ArrowRenderer(CLIRenderer):
     def __init__(
