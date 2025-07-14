@@ -278,6 +278,7 @@ class CLIRenderer(interfaces.renderers.Renderer):
 
 
 class QuickTextRenderer(CLIRenderer):
+
     name = "quick"
 
     def get_render_options(self):
@@ -347,6 +348,7 @@ class NoneRenderer(CLIRenderer):
 
 
 class CSVRenderer(CLIRenderer):
+
     name = "csv"
     structured_output = True
 
