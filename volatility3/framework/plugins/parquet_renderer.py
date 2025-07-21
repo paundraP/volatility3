@@ -71,9 +71,9 @@ class ArrowRenderer(CLIRenderer):
         """Outputs the JSON data to a file in a particular format"""
 
         t = pa.Table.from_pylist(result, schema=schema)
-        self.write_data(t, outfd)
+        self.write_table(t, outfd)
 
-    def write_data(self, t: "pa.Table", outfd: TextIO) -> None:
+    def write_table(self, t: "pa.Table", outfd: TextIO) -> None:
         buf = pa.BufferOutputStream()
 
         writer = pa.ipc.new_stream(buf, t.schema)
