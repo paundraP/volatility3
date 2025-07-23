@@ -1273,10 +1273,20 @@ class vm_area_struct(objects.StructType):
         except exceptions.InvalidAddressException:
             return None
 
-    def get_malicious_pages(self, proclayer=None):
+    def get_malicious_pages(self, proclayer) -> List[int]:
+        """Identifies and returns a list of potentially malicious memory pages.
+
+        A page is considered malicious if it is:
+            - Executable (protection flags match 'r-x')
+            - Dirty (modified since process start, according to proclayer.is_dirty())
+
+        Args:
+            proclayer: The process's memory layer
+
+        Returns:
+            List[int]: A list of virtual addresses for pages flagged as potentially malicious.
         """
-        This function will return a list of all malicious pages inside a given dirty region
-        """
+
         malicious_pages = []
         flags_str = self.get_protection()
 
