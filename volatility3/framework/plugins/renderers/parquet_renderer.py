@@ -82,7 +82,6 @@ class ArrowRenderer(CLIRenderer):
 
         return pa.schema(fields)
 
-
     def _flatten_tree_structure(self, nested: list[dict]) -> list[dict]:
         """
         Flattens a list of nested dicts using the `__children` key.
@@ -116,12 +115,8 @@ class ArrowRenderer(CLIRenderer):
 
         return rows
 
-
-
-
     def output_result(self, schema: "pa.Schema", outfd: TextIO, result):
         """Outputs the JSON data to a file in a particular format"""
-
 
         if self._is_tree_result:
             result = self._flatten_tree_structure(result)
