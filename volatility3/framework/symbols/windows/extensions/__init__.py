@@ -1715,13 +1715,11 @@ class SHARED_CACHE_MAP(objects.StructType):
 class LDR_DATA_TABLE_ENTRY(objects.StructType):
     def get_load_count(self) -> Optional[int]:
         try:
-            LoadCount = self.LoadCount
+            LoadCount = self.LoadCount.cast("short")
         except Exception:
             try:
-                LoadCount = self.ObsoleteLoadCount
+                LoadCount = self.ObsoleteLoadCount.cast("short")
             except Exception:
                 LoadCount = None
-        if LoadCount == 65535:
-            LoadCount = -1
 
         return LoadCount
