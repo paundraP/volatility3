@@ -8,6 +8,7 @@ from typing import (
     Any,
     Dict,
     List,
+    Optional,
     Tuple,
     TextIO,
 )
@@ -39,7 +40,7 @@ class ArrowRenderer(CLIRenderer):
     _version = (1, 0, 0)
 
     def __init__(
-        self, options: List[interfaces.renderers.RenderOption] | None = None
+        self, options: Optional[List[interfaces.renderers.RenderOption]] = None
     ) -> None:
         super().__init__(options)
 
@@ -82,7 +83,7 @@ class ArrowRenderer(CLIRenderer):
 
         return pa.schema(fields)
 
-    def _flatten_tree_structure(self, nested: list[dict]) -> list[dict]:
+    def _flatten_tree_structure(self, nested: List[Dict]) -> List[Dict]:
         """
         Flattens a list of nested dicts using the `__children` key.
 
@@ -98,7 +99,7 @@ class ArrowRenderer(CLIRenderer):
         rows = []
         self._node_id_counter = 0
 
-        def _process_node(node: dict, parent_id: int | None):
+        def _process_node(node: Dict, parent_id: Optional[int]):
             current_id = self._node_id_counter
             self._node_id_counter += 1
 
