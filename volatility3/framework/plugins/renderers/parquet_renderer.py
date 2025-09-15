@@ -162,7 +162,7 @@ class ArrowRenderer(text_renderer.CLIRenderer):
                     data = text_renderer.display_disassembly(data)
 
                 if isinstance(data, renderers.LayerData):
-                    data = LayerDataRenderer().render_bytes(data)[0]
+                    data = text_renderer.LayerDataRenderer().render_bytes(data)[0]
 
                 node_dict[column.name] = data
                 line.append(data)
