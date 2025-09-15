@@ -28,7 +28,7 @@ except ImportError:
     vollog.debug("Arrow/Parquet libraries not found")
 
 
-class ArrowRenderer(CLIRenderer):
+class ArrowRenderer(text_renderer.CLIRenderer):
     """Renderer that outputs Arrow IPC format data."""
 
     name = "arrow"
