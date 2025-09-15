@@ -159,7 +159,7 @@ class ArrowRenderer(CLIRenderer):
                     data = None
 
                 if isinstance(data, renderers.Disassembly):
-                    data = display_disassembly(data)
+                    data = text_renderer.display_disassembly(data)
 
                 if isinstance(data, renderers.LayerData):
                     data = LayerDataRenderer().render_bytes(data)[0]
