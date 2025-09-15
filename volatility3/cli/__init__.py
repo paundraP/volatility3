@@ -106,13 +106,6 @@ class CommandLine:
 
         volatility3.framework.require_interface_version(2, 0, 0)
 
-        renderers = dict(
-            [
-                (x.name.lower(), x)
-                for x in framework.class_subclasses(text_renderer.CLIRenderer)
-            ]
-        )
-
         # Load up system defaults
         delayed_logs, default_config = self.load_system_defaults("vol.json")
 
@@ -194,14 +187,6 @@ class CommandLine:
             action="store_true",
         )
         parser.add_argument(
-            "-r",
-            "--renderer",
-            metavar="RENDERER",
-            help=f"Determines how to render the output ({', '.join(list(renderers))})",
-            default="quick",
-            choices=list(renderers),
-        )
-        parser.add_argument(
             "-f",
             "--file",
             metavar="FILE",
@@ -269,11 +254,6 @@ class CommandLine:
         # processed the plugin choice or had the plugin subparser added.
         known_args = [arg for arg in sys.argv if arg != "--help" and arg != "-h"]
         partial_args, _ = parser.parse_known_args(known_args)
-
-        banner_output = sys.stdout
-        if renderers[partial_args.renderer].structured_output:
-            banner_output = sys.stderr
-        banner_output.write(f"Volatility 3 Framework {constants.PACKAGE_VERSION}\n")
 
         ### Start up logging
         if partial_args.log:
@@ -346,6 +326,24 @@ class CommandLine:
 
         plugin_list = framework.list_plugins()
 
+        # Discover renderers after plugin directories are loaded
+        # This allows custom renderers to be found in plugin directories
+        renderers = dict(
+            [
+                (x.name.lower(), x)
+                for x in framework.class_subclasses(text_renderer.CLIRenderer)
+            ]
+        )
+
+        parser.add_argument(
+            "-r",
+            "--renderer",
+            metavar="RENDERER",
+            help=f"Determines how to render the output ({', '.join(list(renderers))})",
+            default="quick",
+            choices=list(renderers),
+        )
+
         seen_automagics = set()
         chosen_configurables_list = {}
         for amagic in automagics:
@@ -392,6 +390,13 @@ class CommandLine:
             # before all the plugins have been added
             argcomplete.autocomplete(parser)
         args = parser.parse_args()
+
+        # Display banner - redirect to stderr if using structured output
+        banner_output = sys.stdout
+        if renderers[args.renderer].structured_output:
+            banner_output = sys.stderr
+        banner_output.write(f"Volatility 3 Framework {constants.PACKAGE_VERSION}\n")
+
         if args.plugin is None:
             parser.error(
                 f"Please select a plugin to run (see '{self.CLI_NAME} --help' for options"
