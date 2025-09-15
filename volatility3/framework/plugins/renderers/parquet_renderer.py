@@ -14,11 +14,7 @@ from typing import (
 )
 from volatility3.framework import interfaces, renderers
 from volatility3.framework.renderers import format_hints
-from volatility3.cli.text_renderer import (
-    CLIRenderer,
-    display_disassembly,
-    LayerDataRenderer,
-)
+from volatility3.cli import text_renderer
 
 vollog = logging.getLogger(__name__)
 
