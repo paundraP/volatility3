@@ -10,6 +10,7 @@ try:
     import pyarrow.compute as pc
     HAS_PYARROW = True
 except ImportError:
+   # The user doesn't have pyarrow installed, but HAS_PYARROW will be false so just continue
     pass
 
 
