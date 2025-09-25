@@ -418,7 +418,7 @@ class Modules(interfaces.configuration.VersionableInterface):
         ):
             vollog.warning(
                 f"Module addresses aren't aligned to {module_address_alignment} bytes. "
-                "Switching to 1 byte aligment scan method."
+                "Switching to 1 byte alignment scan method."
             )
             module_address_alignment = 1
 
@@ -641,7 +641,7 @@ class Modules(interfaces.configuration.VersionableInterface):
 
         kernel = context.modules[vmlinux_name]
 
-        # For arrays, recusively get the value of each member as the type can be different
+        # For arrays, recursively get the value of each member as the type can be different
         if param_func == getters["param_array_get"]:
             array = param.arr
 
@@ -862,7 +862,7 @@ class ModuleGathererKernel(ModuleGathererInterface):
     ) -> ModuleGathererInterface.gatherer_return_type:
         """
         Returns a ModuleInfo instance that encodes the kernel
-        This is required to map function pointers to the kerenl executable
+        This is required to map function pointers to the kernel executable
         """
         kernel = context.modules[kernel_module_name]
 

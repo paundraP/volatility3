@@ -49,7 +49,7 @@ def hex_bytes_as_text(value: bytes, width: int = 16) -> str:
                 output += "\n"
             printables = ""
 
-    # Handle leftovers when the length is not mutiple of width
+    # Handle leftovers when the length is not a multiple of width
     if printables:
         padding = width - len(printables)
         output += "   " * padding
@@ -182,7 +182,7 @@ class LayerDataRenderer(CLITypeRenderer):
                         output += "\n"
                     printables = ""
 
-            # Handle leftovers when the length is not mutiple of width
+            # Handle leftovers when the length is not a multiple of width
             if printables:
                 padding = self.width - len(printables)
                 output += "   " * padding

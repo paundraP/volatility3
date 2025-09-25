@@ -99,7 +99,6 @@ class VadYaraScan(interfaces.plugins.PluginInterface):
                         layer_name=layer.name,
                         length=len(value),
                     )
-
                     yield 0, (
                         format_hints.Hex(offset),
                         task.UniqueProcessId,

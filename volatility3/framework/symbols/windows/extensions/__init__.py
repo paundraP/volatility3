@@ -568,16 +568,20 @@ class ETHREAD(objects.StructType, pool.ExecutiveObject):
         # passed all validations
         return True
 
-    def get_create_time(self):
+    def get_create_time(
+        self,
+    ) -> Union[datetime.datetime, interfaces.renderers.BaseAbsentValue]:
         # For Windows XPs
         if self.has_member("ThreadsProcess"):
             return conversion.wintime_to_datetime(self.CreateTime.QuadPart >> 3)
         return conversion.wintime_to_datetime(self.CreateTime.QuadPart)
 
-    def get_exit_time(self):
+    def get_exit_time(
+        self,
+    ) -> Union[datetime.datetime, interfaces.renderers.BaseAbsentValue]:
         return conversion.wintime_to_datetime(self.ExitTime.QuadPart)
 
-    def owning_process(self) -> interfaces.objects.ObjectInterface:
+    def owning_process(self) -> "EPROCESS":
         """Return the EPROCESS that owns this thread."""
 
         # For Windows XPs
@@ -705,7 +709,11 @@ class EPROCESS(generic.GenericIntelProcess, pool.ExecutiveObject):
                         return False
 
             # NT pids are divisible by 4
-            if self.UniqueProcessId % 4 != 0:
+            if (
+                self.UniqueProcessId % 4 != 0
+                or self.UniqueProcessId == 0
+                or self.UniqueProcessId > constants.windows.MAX_PID
+            ):
                 return False
 
             # check for all 0s besides the PCID entries
@@ -732,9 +740,10 @@ class EPROCESS(generic.GenericIntelProcess, pool.ExecutiveObject):
 
         return True
 
+    @functools.lru_cache
     def add_process_layer(
         self, config_prefix: Optional[str] = None, preferred_name: Optional[str] = None
-    ):
+    ) -> str:
         """Constructs a new layer based on the process's DirectoryTableBase."""
 
         parent_layer = self._context.layers[self.vol.layer_name]

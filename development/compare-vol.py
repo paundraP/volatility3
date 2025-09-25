@@ -339,7 +339,7 @@ if __name__ == "__main__":
         "--vol3path",
         type=str,
         default=os.path.join(os.getcwd(), "volatility3"),
-        help="Path ot the volatility 3 directory",
+        help="Path to the volatility 3 directory",
     )
     parser.add_argument(
         "--vol2path",

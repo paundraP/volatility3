@@ -10,8 +10,7 @@ import inspect
 
 from typing import Callable, Tuple
 
-from volatility3.framework import interfaces, exceptions
-from volatility3.framework.configuration import requirements
+from volatility3.framework import interfaces, exceptions, versionutils
 
 
 def method_being_removed(message: str, removal_date: str):
@@ -70,7 +69,7 @@ def deprecated_method(
                     interfaces.configuration.VersionableInterface,
                 ):
                     # SemVer check
-                    if not requirements.VersionRequirement.matches_required(
+                    if not versionutils.matches_required(
                         replacement_version, replacement_base_class.version
                     ):
                         raise exceptions.VersionMismatchException(
@@ -134,6 +133,15 @@ class PluginRenameClass:
                     ),
                 )
             else:
-                if not attr.startswith("__"):
+                if attr == "run":
+                    setattr(
+                        cls,
+                        attr,
+                        method_being_removed(
+                            removal_date=removal_date,
+                            message=f"This plugin has been renamed, please call {replacement_class.__module__}.{replacement_class.__qualname__} rather than {deprecated_class_name}.",
+                        )(value),
+                    )
+                elif not attr.startswith("__"):
                     setattr(cls, attr, value)
         return super(PluginRenameClass).__init_subclass__(**kwargs)

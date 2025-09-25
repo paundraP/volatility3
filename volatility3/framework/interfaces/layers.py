@@ -678,7 +678,7 @@ class LayerContainer(collections.abc.Mapping):
             if name in self._layers[layer].dependencies:
                 raise exceptions.LayerException(
                     self._layers[layer].name,
-                    f"Layer {self._layers[layer].name} is depended upon by {layer}",
+                    f"Layer {name} is depended upon by {layer}",
                 )
         # Otherwise, wipe out the layer
         self._layers[name].destroy()

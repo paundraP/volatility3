@@ -21,7 +21,7 @@ from volatility3.framework.symbols.linux import extensions
 
 vollog = logging.getLogger(__name__)
 
-# This module is responsbile for producing an ELF file of a kernel module (LKM) loaded in memory
+# This module is responsible for producing an ELF file of a kernel module (LKM) loaded in memory
 # This extraction task is quite complicated as the Linux kernel discards the ELF header at load time
 # Due to this, to support static analysis, we must create an ELF header and proper file based on the sections
 # There are also several other significant complications that we must deal with when trying to extract an LKM
@@ -423,7 +423,7 @@ class ModuleExtract(interfaces.configuration.VersionableInterface):
             )
             if not data:
                 vollog.debug(
-                    f"Coult not construct a symbol table for module at {module.vol.offset}. Cannot recover."
+                    f"Could not construct a symbol table for module at {module.vol.offset}. Cannot recover."
                 )
                 return None, None, None
 
@@ -469,7 +469,7 @@ class ModuleExtract(interfaces.configuration.VersionableInterface):
             e_shentsize_int = 64
             header_size = 64
 
-        e_type = struct.pack("<H", 1)  # relocateble
+        e_type = struct.pack("<H", 1)  # relocatable
         e_machine = struct.pack("<H", e_machine_int)
         e_version = struct.pack("<I", 1)
         e_entry = b"\x00" * int(
@@ -762,7 +762,7 @@ class ModuleExtract(interfaces.configuration.VersionableInterface):
             # ndex into the string table
             name_index += len(name) + 1
 
-            # concatanate the header and section bytes
+            # concatenate the header and section bytes
             sections_headers += header_bytes
             sections_data += section_data
 

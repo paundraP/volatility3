@@ -99,7 +99,7 @@ class LinuxKernelIntermedSymbols(intermed.IntermediateSymbolTable):
 class LinuxUtilities(interfaces.configuration.VersionableInterface):
     """Class with multiple useful linux functions."""
 
-    _version = (2, 3, 0)
+    _version = (2, 3, 1)
     _required_framework_version = (2, 0, 0)
 
     framework.require_interface_version(*_required_framework_version)
@@ -169,6 +169,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
             return ""
 
         path_reversed = []
+        smeared = False
         while (
             dentry
             and dentry.is_readable()
@@ -190,10 +191,19 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
 
             parent = dentry.d_parent
             dname = dentry.d_name.name_as_str()
+            # empty dentry names are most likely
+            # the result of smearing
+            if not dname:
+                smeared = True
             path_reversed.append(dname.strip("/"))
             dentry = parent
 
         path = "/" + "/".join(reversed(path_reversed))
+        if smeared:
+            # if there is smear the missing dname will be empty. e.g. if the normal
+            # path would be /foo/bar/baz, but bar is missing due to smear the results
+            # returned here will show /foo//baz. Note the // for the missing dname.
+            return f"<potentially smeared> {path}"
         return path
 
     @classmethod
@@ -505,7 +515,7 @@ class LinuxUtilities(interfaces.configuration.VersionableInterface):
         vmlinux: interfaces.context.ModuleInterface,
     ) -> Optional[interfaces.objects.ObjectInterface]:
         """Cast a member of a structure out to the containing structure.
-        It mimicks the Linux kernel macro container_of() see include/linux.kernel.h
+        It mimics the Linux kernel macro container_of() see include/linux.kernel.h
 
         Args:
             addr: The pointer to the member.

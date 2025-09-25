@@ -8,7 +8,7 @@ import datetime
 import time
 import tarfile
 from dataclasses import dataclass, astuple
-from typing import IO, List, Set, Type, Iterable, Tuple
+from typing import IO, List, Set, Type, Iterable, Tuple, Union
 from io import BytesIO
 from pathlib import PurePath
 
@@ -283,9 +283,14 @@ class Files(plugins.PluginInterface, timeliner.TimeLinerInterface):
                 continue
 
             # Inode already processed?
+            # Store a primitive int (instead of the pointer value) to track
+            # addresses we've already seen. Storing the full `objects.Pointer`
+            # uses too much memory, and we don't need all of the information
+            # that it contains.
             if root_inode_ptr in seen_inodes:
                 continue
-            seen_inodes.add(root_inode_ptr)
+
+            seen_inodes.add(int(root_inode_ptr))
 
             root_path = mountpoint
 
@@ -318,9 +323,13 @@ class Files(plugins.PluginInterface, timeliner.TimeLinerInterface):
                     continue
 
                 # Inode already processed?
+                # Store a primitive int (instead of the pointer value) to track
+                # addresses we've already seen. Storing the full `objects.Pointer`
+                # uses too much memory, and we don't need all of the information
+                # that it contains.
                 if file_inode_ptr in seen_inodes:
                     continue
-                seen_inodes.add(file_inode_ptr)
+                seen_inodes.add(int(file_inode_ptr))
 
                 if follow_symlinks:
                     file_path = cls._follow_symlink(file_inode_ptr, file_path)
@@ -541,6 +550,7 @@ class InodePages(plugins.PluginInterface):
         self,
         inode: interfaces.objects.ObjectInterface,
         vmlinux_layer: interfaces.layers.TranslationLayerInterface,
+        filename: Union[renderers.NotApplicableValue, str],
     ) -> Iterable[Tuple[int, int, int, int, bool, str]]:
         inode_size = inode.i_size
         try:
@@ -569,6 +579,7 @@ class InodePages(plugins.PluginInterface):
                     page_index,
                     dump_safe,
                     page_flags,
+                    filename,
                 )
 
                 yield 0, fields
@@ -610,6 +621,7 @@ class InodePages(plugins.PluginInterface):
             vollog.error("The inode is not a regular file")
             return None
 
+        filename = renderers.NotApplicableValue()
         if self.config["dump"]:
             open_method = self.open
             inode_address = inode.vol.offset
@@ -618,8 +630,7 @@ class InodePages(plugins.PluginInterface):
             self.write_inode_content_to_file(
                 self.context, vmlinux_layer.name, inode, filename, open_method
             )
-        else:
-            yield from self._generate_inode_fields(inode, vmlinux_layer)
+        yield from self._generate_inode_fields(inode, vmlinux_layer, filename)
 
     def run(self):
         headers = [
@@ -629,6 +640,7 @@ class InodePages(plugins.PluginInterface):
             ("Index", int),
             ("DumpSafe", bool),
             ("Flags", str),
+            ("Output File", str),
         ]
 
         return renderers.TreeGrid(

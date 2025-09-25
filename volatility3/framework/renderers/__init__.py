@@ -93,7 +93,7 @@ class Disassembly(interfaces.renderers.BasicType):
 class LayerData(interfaces.renderers.BasicType):
     """Layer data
 
-    This requires the contex to be passed in, in case plugins want to use multiple contexts
+    This requires the context to be passed in, in case plugins want to use multiple contexts
     and to ensure the TreeGrid interface doesn't change, since this would break all existing plugins
     """
 

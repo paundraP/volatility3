@@ -86,7 +86,7 @@ class VadRegExScan(plugins.PluginInterface):
             ):
                 result_data = proc_layer.read(offset, self.MAXSIZE_DEFAULT, pad=True)
 
-                # reapply the regex in order to extact just the match
+                # reapply the regex in order to extract just the match
                 regex_result = re.match(regex_pattern, result_data)
 
                 if regex_result:

@@ -602,7 +602,7 @@ def decode_sid(data: bytes) -> Optional[str]:
     Decodes a windows SID from variable-length raw bytes
 
     Returns the string representation of the SID if decoding was successful, or None
-    if the data could not be parsed due to an insufficent number of bytes.
+    if the data could not be parsed due to an insufficient number of bytes.
     """
     try:
         revision, subid_count, id_authority = struct.unpack(
@@ -817,7 +817,7 @@ class TaskTrigger:
         _ = reader.read_u4()  # timeout seconds
 
         repetition_interval_secs = reader.read_u4()
-        _ = reader.read_u4()  # reptition duration seconds
+        _ = reader.read_u4()  # repetition duration seconds
         _ = reader.read_u4()  # repetition duration seconds 2
 
         _ = reader.read_bool()  # stop at duration end

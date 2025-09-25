@@ -471,6 +471,7 @@ class task_struct(generic.GenericIntelProcess):
 
         return True
 
+    @functools.lru_cache
     def add_process_layer(
         self, config_prefix: Optional[str] = None, preferred_name: Optional[str] = None
     ) -> Optional[str]:
@@ -983,9 +984,9 @@ class maple_tree(objects.StructType):
                         current_depth + 1,
                     )
         else:
-            # unkown maple node type
+            # unknown maple node type
             raise AttributeError(
-                f"Unkown Maple Tree node type {node_type} at offset {hex(pointer)}."
+                f"Unknown Maple Tree node type {node_type} at offset {hex(pointer)}."
             )
 
 
@@ -2294,7 +2295,7 @@ class kernel_cap_t(kernel_cap_struct):
 
 
 class Timespec64Abstract(abc.ABC):
-    """Abstract class to handle all required timespec64 operations, convertions and
+    """Abstract class to handle all required timespec64 operations, conversions and
     adjustments."""
 
     @classmethod
@@ -2390,7 +2391,7 @@ class Timespec64Abstract(abc.ABC):
 
 
 class Timespec64Concrete(Timespec64Abstract):
-    """Handle all required timespec64 operations, convertions and adjustments.
+    """Handle all required timespec64 operations, conversions and adjustments.
     This is used to dynamically create timespec64-like objects, each with its own variables
     and the same methods as a timespec64 object extension.
     """
@@ -2401,7 +2402,7 @@ class Timespec64Concrete(Timespec64Abstract):
 
 
 class timespec64(Timespec64Abstract, objects.StructType):
-    """Handle all required timespec64 operations, convertions and adjustments.
+    """Handle all required timespec64 operations, conversions and adjustments.
     This works as an extension of the timespec64 object while maintaining the same methods
     as a Timespec64Concrete object.
     """
@@ -2769,7 +2770,7 @@ class IDR(objects.StructType):
         vmlinux = linux.LinuxUtilities.get_module_from_volobj_type(self._context, self)
         if not vmlinux.get_type("idr_layer").has_member("layer"):
             vollog.info(
-                "Unsupported IDR implementation, it should be a very very old kernel, probabably < 2.6"
+                "Unsupported IDR implementation, it should be a very very old kernel, probably < 2.6"
             )
             return None
 
@@ -3064,14 +3065,9 @@ class kernel_symbol(objects.StructType):
         else:
             raise AttributeError("Unsupported kernel_symbol type implementation")
 
-        layer = self._context.layers[self.vol.layer_name]
-        name_bytes = layer.read(name_offset, linux_constants.KSYM_NAME_LEN)
-
-        idx = name_bytes.find(b"\x00")
-        if idx != -1:
-            name_bytes = name_bytes[:idx]
-
-        return name_bytes.decode("utf-8", errors="ignore")
+        return utility.pointer_to_string(
+            name_offset, linux_constants.KSYM_NAME_LEN, errors="ignore"
+        )
 
     def get_name(self) -> Optional[str]:
         try:
@@ -3107,14 +3103,9 @@ class kernel_symbol(objects.StructType):
         else:
             raise AttributeError("Unsupported kernel_symbol type implementation")
 
-        layer = self._context.layers[self.vol.layer_name]
-        namespace_bytes = layer.read(namespace_offset, linux_constants.KSYM_NAME_LEN)
-
-        idx = namespace_bytes.find(b"\x00")
-        if idx != -1:
-            namespace_bytes = namespace_bytes[:idx]
-
-        return namespace_bytes.decode("utf-8", errors="ignore")
+        return utility.pointer_to_string(
+            namespace_offset, linux_constants.KSYM_NAME_LEN, errors="ignore"
+        )
 
     def get_namespace(self) -> Optional[str]:
         try:

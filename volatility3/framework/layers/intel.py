@@ -136,7 +136,7 @@ class Intel(linear.LinearlyMappedLayer):
         return bool(entry & (1 << 6))
 
     def canonicalize(self, addr: int) -> int:
-        """Canonicalizes an address by performing an appropiate sign extension on the higher addresses"""
+        """Canonicalizes an address by performing an appropriate sign extension on the higher addresses"""
         if self._bits_per_register <= self._maxvirtaddr:
             return addr & self.address_mask
         elif addr < (1 << self._maxvirtaddr - 1):
