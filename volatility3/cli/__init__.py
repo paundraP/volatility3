@@ -10,6 +10,7 @@ User interfaces make use of the framework to:
  * run the plugin
  * display the results
 """
+
 import argparse
 import inspect
 import io
@@ -458,8 +459,9 @@ class CommandLine:
                     raise ValueError(
                         "Invalid extension (extensions must be of the format \"conf.path.value='value'\")"
                     )
-                address, value = extension[: extension.find("=")], json.loads(
-                    extension[extension.find("=") + 1 :]
+                address, value = (
+                    extension[: extension.find("=")],
+                    json.loads(extension[extension.find("=") + 1 :]),
                 )
                 ctx.config[address] = value
 
@@ -574,7 +576,7 @@ class CommandLine:
                 delayed_logs.append(
                     (
                         logging.DEBUG,
-                        f"Loaded configuration: {json.dumps(result, indent = 2, sort_keys = True)}",
+                        f"Loaded configuration: {json.dumps(result, indent=2, sort_keys=True)}",
                     )
                 )
                 return delayed_logs, result
@@ -763,7 +765,7 @@ class CommandLine:
                 constants.LOGLEVEL_VVVV,
             ]
         ):
-            logging.addLevelName(level_value, f"DETAIL {level+1}")
+            logging.addLevelName(level_value, f"DETAIL {level + 1}")
 
     def file_handler_class_factory(self, direct=True):
         output_dir = self.output_dir

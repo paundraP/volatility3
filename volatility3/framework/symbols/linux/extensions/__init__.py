@@ -36,7 +36,6 @@ vollog = logging.getLogger(__name__)
 
 
 class module(generic.GenericIntelProcess):
-
     def is_valid(self):
         """Determine whether it is a valid module object by verifying the self-referential
         in module_kobject. This also confirms that the module is actively allocated and
@@ -991,7 +990,6 @@ class maple_tree(objects.StructType):
 
 
 class mm_struct(objects.StructType):
-
     # TODO: As of version 3.0.0 this method should be removed
     def get_mmap_iter(self) -> Iterable[interfaces.objects.ObjectInterface]:
         """
@@ -3048,7 +3046,6 @@ class latch_tree_root(objects.StructType):
 
 
 class kernel_symbol(objects.StructType):
-
     def _offset_to_ptr(self, off) -> int:
         layer = self._context.layers[self.vol.layer_name]
         long_mask = (1 << layer.bits_per_register) - 1

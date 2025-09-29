@@ -220,5 +220,9 @@ class Lsof(plugins.PluginInterface, timeliner.TimeLinerInterface):
             )
 
             yield description, timeliner.TimeLinerType.CHANGED, fd_user.change_time
-            yield description, timeliner.TimeLinerType.MODIFIED, fd_user.modification_time
+            yield (
+                description,
+                timeliner.TimeLinerType.MODIFIED,
+                fd_user.modification_time,
+            )
             yield description, timeliner.TimeLinerType.ACCESSED, fd_user.access_time
