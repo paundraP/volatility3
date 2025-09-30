@@ -54,7 +54,7 @@ test = [
 docs = [
     "volatility3[dev]",
     "sphinx>=4.0.0,<9",
-    "sphinx-autodoc-typehints>=3.0.0,<4",
+    "sphinx-autodoc-typehints>=3.0.0,<4; python_version >= '3.11'",
     "sphinx-rtd-theme>=3.0.1,<4",
 ]
 
