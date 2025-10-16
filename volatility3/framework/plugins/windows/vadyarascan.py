@@ -100,21 +100,24 @@ class VadYaraScan(interfaces.plugins.PluginInterface):
                         layer_name=layer.name,
                         length=len(value),
                     )
-                    yield 0, (
-                        format_hints.Hex(offset),
-                        task.UniqueProcessId,
-                        task.get_create_time(),
-                        task.InheritedFromUniqueProcessId,
-                        task.ImageFileName.cast(
-                            "string",
-                            max_length=task.ImageFileName.vol.count,
-                            errors="replace",
+                    yield (
+                        0,
+                        (
+                            format_hints.Hex(offset),
+                            task.UniqueProcessId,
+                            task.get_create_time(),
+                            task.InheritedFromUniqueProcessId,
+                            task.ImageFileName.cast(
+                                "string",
+                                max_length=task.ImageFileName.vol.count,
+                                errors="replace",
+                            ),
+                            task.get_session_id(),
+                            task.ActiveThreads,
+                            rule_name,
+                            name,
+                            layer_data,
                         ),
-                        task.get_session_id(),
-                        task.ActiveThreads,
-                        rule_name,
-                        name,
-                        layer_data,
                     )
 
     @classmethod

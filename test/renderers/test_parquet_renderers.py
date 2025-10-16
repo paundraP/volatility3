@@ -8,9 +8,10 @@ try:
     import pyarrow as pa
     import pyarrow.parquet as pq
     import pyarrow.compute as pc
+
     HAS_PYARROW = True
 except ImportError:
-   # The user doesn't have pyarrow installed, but HAS_PYARROW will be false so just continue
+    # The user doesn't have pyarrow installed, but HAS_PYARROW will be false so just continue
     pass
 
 
@@ -41,10 +42,33 @@ class TestArrowRendererBase(ABC):
         table = self._get_table_from_output(out)
         assert table.num_rows > 10
 
-        assert table.filter(pc.match_substring(pc.utf8_lower(table.column('ImageFileName')), "system")).num_rows > 0
-        assert table.filter(pc.match_substring(pc.utf8_lower(table.column('ImageFileName')), "csrss.exe")).num_rows > 0
-        assert table.filter(pc.match_substring(pc.utf8_lower(table.column('ImageFileName')), "svchost.exe")).num_rows > 0
-        assert table.filter(pc.greater(table.column('PID'), 0)).num_rows == table.num_rows
+        assert (
+            table.filter(
+                pc.match_substring(
+                    pc.utf8_lower(table.column("ImageFileName")), "system"
+                )
+            ).num_rows
+            > 0
+        )
+        assert (
+            table.filter(
+                pc.match_substring(
+                    pc.utf8_lower(table.column("ImageFileName")), "csrss.exe"
+                )
+            ).num_rows
+            > 0
+        )
+        assert (
+            table.filter(
+                pc.match_substring(
+                    pc.utf8_lower(table.column("ImageFileName")), "svchost.exe"
+                )
+            ).num_rows
+            > 0
+        )
+        assert (
+            table.filter(pc.greater(table.column("PID"), 0)).num_rows == table.num_rows
+        )
 
     def test_linux_generic_pslist(self, volatility, python, image):
         rc, out, _err = test_volatility.runvol_plugin(
@@ -59,12 +83,23 @@ class TestArrowRendererBase(ABC):
         table = self._get_table_from_output(out)
         assert table.num_rows > 10
 
-        init_rows = table.filter(pc.match_substring(pc.utf8_lower(table.column('COMM')), "init"))
-        systemd_rows = table.filter(pc.match_substring(pc.utf8_lower(table.column('COMM')), "systemd"))
+        init_rows = table.filter(
+            pc.match_substring(pc.utf8_lower(table.column("COMM")), "init")
+        )
+        systemd_rows = table.filter(
+            pc.match_substring(pc.utf8_lower(table.column("COMM")), "systemd")
+        )
         assert (init_rows.num_rows > 0) or (systemd_rows.num_rows > 0)
 
-        assert table.filter(pc.match_substring(pc.utf8_lower(table.column('COMM')), "watchdog")).num_rows > 0
-        assert table.filter(pc.greater(table.column('PID'), 0)).num_rows == table.num_rows
+        assert (
+            table.filter(
+                pc.match_substring(pc.utf8_lower(table.column("COMM")), "watchdog")
+            ).num_rows
+            > 0
+        )
+        assert (
+            table.filter(pc.greater(table.column("PID"), 0)).num_rows == table.num_rows
+        )
 
     def test_windows_generic_handles(self, volatility, python, image):
         rc, out, _err = test_volatility.runvol_plugin(
@@ -79,7 +114,14 @@ class TestArrowRendererBase(ABC):
 
         table = self._get_table_from_output(out)
         assert table.num_rows > 500
-        assert table.filter(pc.match_substring(pc.utf8_lower(table.column('Name')), "machine\\system")).num_rows > 0
+        assert (
+            table.filter(
+                pc.match_substring(
+                    pc.utf8_lower(table.column("Name")), "machine\\system"
+                )
+            ).num_rows
+            > 0
+        )
 
     def test_linux_generic_lsof(self, volatility, python, image):
         rc, out, _err = test_volatility.runvol_plugin(
@@ -94,6 +136,7 @@ class TestArrowRendererBase(ABC):
         table = self._get_table_from_output(out)
         assert table.num_rows > 35
 
+
 class TestParquetRenderer(TestArrowRendererBase):
     renderer_format = "parquet"
 
@@ -106,4 +149,3 @@ class TestArrowRenderer(TestArrowRendererBase):
 
     def _get_table_from_output(self, output_bytes):
         return pa.ipc.open_stream(io.BytesIO(output_bytes)).read_all()
-

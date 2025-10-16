@@ -3,6 +3,7 @@
 #
 """Objects are the core of volatility, and provide pythonic access to
 interpreted values of data from a layer."""
+
 import abc
 import collections
 import collections.abc
