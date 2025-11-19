@@ -52,7 +52,7 @@ class Lsmod(plugins.PluginInterface):
     @deprecation.deprecated_method(
         replacement=linux_utilities_modules.Modules.list_modules,
         replacement_version=(3, 0, 0),
-        removal_date="2025-09-25",
+        removal_date="2026-03-25",
     )
     def list_modules(
         cls, context: interfaces.context.ContextInterface, vmlinux_module_name: str
