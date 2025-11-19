@@ -4,10 +4,10 @@
 """A module containing a plugin that lists loaded kernel modules."""
 
 import logging
-from typing import List, Iterable
+from typing import Iterable, List
 
 import volatility3.framework.symbols.linux.utilities.modules as linux_utilities_modules
-from volatility3.framework import constants, interfaces, deprecation, renderers
+from volatility3.framework import constants, deprecation, interfaces, renderers
 from volatility3.framework.configuration import requirements
 from volatility3.framework.interfaces import plugins
 
