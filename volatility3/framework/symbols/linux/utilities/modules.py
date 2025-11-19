@@ -976,7 +976,7 @@ class ModuleDisplayPlugin(interfaces.configuration.VersionableInterface):
 
             file_name = renderers.NotApplicableValue()
 
-            if open_implementation:
+            if  dump and open_implementation:
                 elf_data = linux_utilities_module_extract.ModuleExtract.extract_module(
                     context, kernel_module_name, module
                 )
