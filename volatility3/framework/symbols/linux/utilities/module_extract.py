@@ -15,6 +15,7 @@ from volatility3.framework import (
     interfaces,
     exceptions,
     symbols,
+    deprecation
 )
 from volatility3.framework.constants import linux as linux_constants
 from volatility3.framework.symbols.linux import extensions
@@ -34,7 +35,12 @@ vollog = logging.getLogger(__name__)
 
 # ModuleExtract.extract_module is the entry point and only visible method for plugins
 
-
+# See PR #1773
+@deprecation.renamed_class(
+    deprecated_class_name="ModuleExtract",
+    removal_date="2026-06-01",
+    message="volatility3.framework.symbols.linux.utilities.module_extract.ModuleExtract is to be deprecated. Use volatility3.framework.symbols.linux.utilities.modules.ModuleExtract instead.",
+)
 class ModuleExtract(interfaces.configuration.VersionableInterface):
     """Extracts Linux kernel module structures into an analyzable ELF file"""
 
