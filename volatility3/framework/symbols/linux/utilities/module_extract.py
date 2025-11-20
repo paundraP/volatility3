@@ -11,12 +11,7 @@ from typing import (
 )
 
 from volatility3 import framework
-from volatility3.framework import (
-    interfaces,
-    exceptions,
-    symbols,
-    deprecation
-)
+from volatility3.framework import interfaces, exceptions, symbols, deprecation
 from volatility3.framework.constants import linux as linux_constants
 from volatility3.framework.symbols.linux import extensions
 
@@ -34,6 +29,7 @@ vollog = logging.getLogger(__name__)
 # we create the .shstrtab based on the sections in memory and then glue it in as the final section
 
 # ModuleExtract.extract_module is the entry point and only visible method for plugins
+
 
 # See PR #1773
 @deprecation.renamed_class(

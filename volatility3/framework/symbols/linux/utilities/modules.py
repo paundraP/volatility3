@@ -25,7 +25,7 @@ from volatility3.framework import (
     interfaces,
     objects,
     renderers,
-    symbols
+    symbols,
 )
 from volatility3.framework.configuration import requirements
 from volatility3.framework.objects import utility
@@ -784,6 +784,7 @@ class Modules(interfaces.configuration.VersionableInterface):
 
             yield name, value
 
+
 # This module is responsible for producing an ELF file of a kernel module (LKM) loaded in memory
 # This extraction task is quite complicated as the Linux kernel discards the ELF header at load time
 # Due to this, to support static analysis, we must create an ELF header and proper file based on the sections
@@ -794,6 +795,7 @@ class Modules(interfaces.configuration.VersionableInterface):
 # Third, the section name string table (.shstrtab) is not an allocated section, meaning its not in memory
 # Not having the .shstrtab makes analysis impossible-to-difficult for static analysis tools. To work around this,
 # we create the .shstrtab based on the sections in memory and then glue it in as the final section
+
 
 # ModuleExtract.extract_module is the entry point and only visible method for plugins
 class ModuleExtract(interfaces.configuration.VersionableInterface):
@@ -1010,10 +1012,8 @@ class ModuleExtract(interfaces.configuration.VersionableInterface):
         """
         kernel = context.modules[vmlinux_name]
         kernel_layer = context.layers[kernel.layer_name]
-        modules_addr_min, modules_addr_max = (
-            Modules.get_modules_memory_boundaries(
-                context, vmlinux_name
-            )
+        modules_addr_min, modules_addr_max = Modules.get_modules_memory_boundaries(
+            context, vmlinux_name
         )
         modules_addr_min &= kernel_layer.address_mask
         modules_addr_max &= kernel_layer.address_mask
@@ -1508,6 +1508,7 @@ class ModuleExtract(interfaces.configuration.VersionableInterface):
 
         # Return our beautiful, hand-crafted, farm raised ELF file
         return header + sections_data + sections_headers
+
 
 class ModuleGathererLsmod(ModuleGathererInterface):
     """
