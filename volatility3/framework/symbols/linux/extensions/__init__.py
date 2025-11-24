@@ -3227,18 +3227,13 @@ class bin_attribute(objects.StructType):
         """
         Performs extraction of the bin_attribute name
         """
-        if hasattr(self, "attr"):
-            try:
-                return utility.pointer_to_string(
-                    self.attr.name, count=linux_constants.ATTRIBUTE_NAME_MAX_SIZE
-                )
-            except exceptions.InvalidAddressException:
-                vollog.debug(
-                    f"Invalid attr name for bin_attribute at {self.vol.offset:#x}"
-                )
-                return None
-
-        return None
+        try:
+            return utility.pointer_to_string(
+                self.attr.name, count=linux_constants.ATTRIBUTE_NAME_MAX_SIZE
+            )
+        except exceptions.InvalidAddressException:
+            vollog.debug(f"Invalid attr name for bin_attribute at {self.vol.offset:#x}")
+            return None
 
     @property
     def address(self) -> int:
