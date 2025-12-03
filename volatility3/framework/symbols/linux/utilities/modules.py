@@ -1134,7 +1134,7 @@ class ModuleExtract(interfaces.configuration.VersionableInterface):
                 vollog.debug(
                     f"Could not construct a symbol table for module at {module.vol.offset}. Cannot recover."
                 )
-                return None, None, None
+                return None
 
             symtab_index = len(updated_sections)
 
@@ -1145,7 +1145,7 @@ class ModuleExtract(interfaces.configuration.VersionableInterface):
             vollog.debug(
                 f"Did not find a .symtab section for module at {module.vol.offset:#x}. Cannot recover."
             )
-            return None, None, None
+            return None
 
         return updated_sections, strtab_index, symtab_index
 
