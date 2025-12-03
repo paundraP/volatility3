@@ -257,8 +257,8 @@ def array_of_pointers(
 def dynamically_sized_array_of_pointers(
     context: interfaces.context.ContextInterface,
     array: interfaces.objects.ObjectInterface,
-    iterator_guard_value: int,
     subtype: Union[str, interfaces.objects.Template],
+    iterator_guard_value: int,
     stop_value: int = 0,
     stop_on_invalid_pointers: bool = True,
 ) -> interfaces.objects.ObjectInterface:

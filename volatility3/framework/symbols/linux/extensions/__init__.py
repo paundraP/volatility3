@@ -210,8 +210,8 @@ class module(generic.GenericIntelProcess):
         bin_attrs_list = utility.dynamically_sized_array_of_pointers(
             context=self._context,
             array=arr_offset_ptr.dereference(),
-            iterator_guard_value=100,
             subtype=self.get_symbol_table_name() + constants.BANG + arr_subtype,
+            iterator_guard_value=100,
         )
         return len(bin_attrs_list)
 
