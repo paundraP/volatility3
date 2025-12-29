@@ -56,7 +56,7 @@ class PsList(interfaces.plugins.PluginInterface):
         """Returns the list_tasks method based on the selector
 
         Args:
-            method: Must be one fo the available methods in get_task_choices
+            method: Must be one of the available methods in get_task_choices
 
         Returns:
             list_tasks method for listing tasks

@@ -152,7 +152,7 @@ def bytes_to_decoded_string(
     """
     Args:
         data: The `bytes` buffer containing the string of a string at offset 0
-        encoding: An encoding value for the encoding paramater of `bytes.decode`
+        encoding: An encoding value for the encoding parameter of `bytes.decode`
         errors: An errors value for the errors parameter of `bytes.decode`
         return_truncated: Dictates whether truncated strings should be returned or
         if a ValueError should be thrown if a truncated (broken) string was decoded

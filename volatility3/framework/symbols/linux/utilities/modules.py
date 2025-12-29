@@ -1,36 +1,35 @@
 import logging
 import warnings
+from abc import ABCMeta, abstractmethod
 from typing import (
+    Callable,
+    Dict,
+    Generator,
     Iterable,
     Iterator,
     List,
-    Optional,
-    Tuple,
     NamedTuple,
-    Dict,
+    Optional,
     Set,
-    Generator,
+    Tuple,
     Union,
 )
-from abc import ABCMeta, abstractmethod
 
+import volatility3.framework.symbols.linux.utilities.module_extract as linux_utilities_module_extract
 from volatility3 import framework
 from volatility3.framework import (
     constants,
-    interfaces,
     deprecation,
     exceptions,
+    interfaces,
     objects,
     renderers,
 )
-from volatility3.framework.constants import architectures
-from volatility3.framework.renderers import format_hints
 from volatility3.framework.configuration import requirements
 from volatility3.framework.objects import utility
+from volatility3.framework.renderers import format_hints
 from volatility3.framework.symbols.linux import extensions
 from volatility3.framework.symbols.linux.utilities import tainting
-
-import volatility3.framework.symbols.linux.utilities.module_extract as linux_utilities_module_extract
 
 vollog = logging.getLogger(__name__)
 
@@ -297,7 +296,6 @@ class Modules(interfaces.configuration.VersionableInterface):
 
             # process each module coming from back the current source
             for module in gatherer.gather_modules(context, kernel_module_name):
-
                 # the kernel sends back a ModuleInfo directly
                 if isinstance(module, ModuleInfo):
                     modinfo = module
@@ -383,7 +381,7 @@ class Modules(interfaces.configuration.VersionableInterface):
         vmlinux_module_name: str,
         known_module_addresses: Set[int],
         modules_memory_boundaries: Tuple,
-    ) -> Iterable[interfaces.objects.ObjectInterface]:
+    ) -> Iterable[extensions.module]:
         """Enumerate hidden modules by taking advantage of memory address alignment patterns
 
         This technique is much faster and uses less memory than the traditional scan method
@@ -418,7 +416,7 @@ class Modules(interfaces.configuration.VersionableInterface):
         ):
             vollog.warning(
                 f"Module addresses aren't aligned to {module_address_alignment} bytes. "
-                "Switching to 1 byte aligment scan method."
+                "Switching to 1 byte alignment scan method."
             )
             module_address_alignment = 1
 
@@ -641,7 +639,7 @@ class Modules(interfaces.configuration.VersionableInterface):
 
         kernel = context.modules[vmlinux_name]
 
-        # For arrays, recusively get the value of each member as the type can be different
+        # For arrays, recursively get the value of each member as the type can be different
         if param_func == getters["param_array_get"]:
             array = param.arr
 
@@ -862,7 +860,7 @@ class ModuleGathererKernel(ModuleGathererInterface):
     ) -> ModuleGathererInterface.gatherer_return_type:
         """
         Returns a ModuleInfo instance that encodes the kernel
-        This is required to map function pointers to the kerenl executable
+        This is required to map function pointers to the kernel executable
         """
         kernel = context.modules[kernel_module_name]
 
@@ -920,19 +918,11 @@ class ModuleDisplayPlugin(interfaces.configuration.VersionableInterface):
     The constructor of the plugin must call super() with the `implementation` set
     """
 
-    _version = (1, 0, 1)
-    _required_framework_version = (2, 0, 0)
-
-    framework.require_interface_version(*_required_framework_version)
+    _version = (2, 0, 0)
 
     @classmethod
     def get_requirements(cls) -> List[interfaces.configuration.RequirementInterface]:
         return [
-            requirements.ModuleRequirement(
-                name="kernel",
-                description="Linux kernel",
-                architectures=architectures.LINUX_ARCHS,
-            ),
             requirements.VersionRequirement(
                 name="linux_utilities_modules",
                 component=Modules,
@@ -941,25 +931,29 @@ class ModuleDisplayPlugin(interfaces.configuration.VersionableInterface):
             requirements.VersionRequirement(
                 name="linux-tainting", component=tainting.Tainting, version=(1, 0, 0)
             ),
-            requirements.BooleanRequirement(
-                name="dump",
-                description="Extract listed modules",
-                default=False,
-                optional=True,
-            ),
         ]
 
-    def generator(self):
+    @classmethod
+    def generate_results(
+        cls,
+        context: interfaces.context.ContextInterface,
+        implementation: Callable[
+            [interfaces.context.ContextInterface, str], Iterable[extensions.module]
+        ],
+        kernel_module_name: str,
+        dump: bool,
+        open_implementation: Optional[interfaces.plugins.FileHandlerInterface],
+    ):
         """
         Uses the implementation set in the constructor call to produce consistent output fields
         across module gathering plugins
         """
-        for module in self.implementation(self.context, self.config["kernel"]):
+        for module in implementation(context, kernel_module_name):
             try:
                 name = utility.array_to_string(module.name)
             except exceptions.InvalidAddressException:
                 vollog.debug(
-                    f"Unable to recover name for module {module.vol.offset:#x} from implementation {self.implementation}"
+                    f"Unable to recover name for module {module.vol.offset:#x} from implementation {implementation}"
                 )
                 continue
 
@@ -969,21 +963,21 @@ class ModuleDisplayPlugin(interfaces.configuration.VersionableInterface):
 
             taints = ",".join(
                 tainting.Tainting.get_taints_parsed(
-                    self.context, self.config["kernel"], module.taints, True
+                    context, kernel_module_name, module.taints, True
                 )
             )
 
             parameters_iter = Modules.get_load_parameters(
-                self.context, self.config["kernel"], module
+                context, kernel_module_name, module
             )
 
             parameters = ", ".join([f"{key}={value}" for key, value in parameters_iter])
 
             file_name = renderers.NotApplicableValue()
 
-            if self.config["dump"]:
+            if dump and open_implementation:
                 elf_data = linux_utilities_module_extract.ModuleExtract.extract_module(
-                    self.context, self.config["kernel"], module
+                    context, kernel_module_name, module
                 )
                 if not elf_data:
                     vollog.warning(
@@ -991,31 +985,30 @@ class ModuleDisplayPlugin(interfaces.configuration.VersionableInterface):
                     )
                     file_name = renderers.NotAvailableValue()
                 else:
-                    file_name = self.open.sanitize_filename(
+                    file_name = open_implementation.sanitize_filename(
                         f"kernel_module.{name}.{module.vol.offset:#x}.elf"
                     )
 
-                    with self.open(file_name) as file_handle:
+                    with open_implementation(file_name) as file_handle:
                         file_handle.write(elf_data)
 
-            yield 0, (
-                format_hints.Hex(module.vol.offset),
-                name,
-                format_hints.Hex(code_size),
-                taints,
-                parameters,
-                file_name,
+            yield (
+                0,
+                (
+                    format_hints.Hex(module.vol.offset),
+                    name,
+                    format_hints.Hex(code_size),
+                    taints,
+                    parameters,
+                    file_name,
+                ),
             )
 
-    def run(self):
-        return renderers.TreeGrid(
-            [
-                ("Offset", format_hints.Hex),
-                ("Module Name", str),
-                ("Code Size", format_hints.Hex),
-                ("Taints", str),
-                ("Load Arguments", str),
-                ("File Output", str),
-            ],
-            self._generator(),
-        )
+    columns_results = [
+        ("Offset", format_hints.Hex),
+        ("Module Name", str),
+        ("Code Size", format_hints.Hex),
+        ("Taints", str),
+        ("Load Arguments", str),
+        ("File Output", str),
+    ]
