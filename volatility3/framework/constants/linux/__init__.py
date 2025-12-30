@@ -9,6 +9,10 @@ Linux-specific values that aren't found in debug symbols
 import enum
 from dataclasses import dataclass
 
+# Exec argument limits
+# Ref: include/uapi/linux/binfmts.h (linux.git commit f6031913338f1dad5bd8cb7286ff4e53644b6940)
+MAX_ARG_STRLEN = 32 * 4096
+
 KERNEL_NAME = "__kernel__"
 
 """The value hard coded from the Linux Kernel (hence not extracted from the layer itself)"""
