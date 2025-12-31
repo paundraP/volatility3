@@ -193,7 +193,7 @@ class Sockscan(plugins.PluginInterface):
     def _walk_file_ops_needles(
         self, symbol_table_name, memory_layer_name, needle_addr, f_op_offset
     ):
-        vmlinux = self.context.modules[symbol_table_name]
+        vmlinux = self.context.modules[kernel_module_name]
         try:
             # create file in the memory_layer, the native layer matches the
             # kernel so that pointers can be followed
