@@ -112,7 +112,7 @@ class Sockscan(plugins.PluginInterface):
 
         return packed_needles
 
-    def _find_memory_layer_name(self, symbol_table_name: str):
+    def _find_memory_layer_name(self, kernel_module_name: str):
         """Find the memory layer below the kernel. Only returns a single layer,
         and will warn the user if multiple layers are found.
 
