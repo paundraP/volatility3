@@ -72,7 +72,7 @@ class Sockscan(plugins.PluginInterface):
             A set of bytes which are the packed addresses.
         """
         # get vmlinux module from context in order to build objects and read symbols
-        vmlinux = self.context.modules[symbol_table_name]
+        vmlinux = self.context.modules[kernel_module_name]
 
         # get kernel layer from context so that it's dependencies can be found, and therefore scanned.
         # kernel layer will be virtual and built ontop of a physical layer.
