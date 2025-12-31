@@ -379,7 +379,7 @@ class Sockscan(plugins.PluginInterface):
 
         # Method 2 - find sockets by socket destructor directly inside sock objects
         socket_destructor_needles, sk_destruct_offset = self._find_sk_destruct_needles(
-            symbol_table_name
+            kernel_module_name
         )
 
         # TODO Method 3 - find sock by sk_error_report symbols
