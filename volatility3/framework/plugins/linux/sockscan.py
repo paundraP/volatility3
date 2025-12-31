@@ -375,7 +375,7 @@ class Sockscan(plugins.PluginInterface):
         progress_callback = self._progress_callback
 
         # Method 1 - find sockets by file operations, then follow pointers to sockets
-        file_ops_needles, f_op_offset = self._find_file_ops_needles(symbol_table_name)
+        file_ops_needles, f_op_offset = self._find_file_ops_needles(kernel_module_name)
 
         # Method 2 - find sockets by socket destructor directly inside sock objects
         socket_destructor_needles, sk_destruct_offset = self._find_sk_destruct_needles(
