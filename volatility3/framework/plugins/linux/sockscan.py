@@ -361,7 +361,7 @@ class Sockscan(plugins.PluginInterface):
         vmlinux = self.context.modules[kernel_module_name]
 
         # get the memory layer that is to be scanned.
-        memory_layer_name = self._find_memory_layer_name(symbol_table_name)
+        memory_layer_name = self._find_memory_layer_name(kernel_module_name)
         memory_layer = self.context.layers[memory_layer_name]
 
         # use the init process to build a sock handler
