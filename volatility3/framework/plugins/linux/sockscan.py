@@ -343,7 +343,7 @@ class Sockscan(plugins.PluginInterface):
         """Scans for sockets. Each row represents a kernel socket.
 
         Args:
-            symbol_table_name: The name of the kernel module on which to operate
+            kernel_module_name: The name of the kernel module on which to operate
 
         Yields:
             addr: Physical offset
