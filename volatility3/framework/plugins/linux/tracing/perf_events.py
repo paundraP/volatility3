@@ -18,7 +18,7 @@ class PerfEvents(plugins.PluginInterface):
     """Lists performance events for each process."""
 
     _required_framework_version = (2, 0, 0)
-    _version = (1, 0, 0)
+    _version = (1, 0, 1)
 
     @classmethod
     def get_requirements(cls) -> List[interfaces.configuration.RequirementInterface]:
@@ -28,8 +28,8 @@ class PerfEvents(plugins.PluginInterface):
                 description="Linux kernel",
                 architectures=["Intel32", "Intel64"],
             ),
-            requirements.PluginRequirement(
-                name="pslist", plugin=pslist.PsList, version=(4, 0, 0)
+            requirements.VersionRequirement(
+                name="pslist", component=pslist.PsList, version=(4, 0, 0)
             ),
         ]
 
@@ -70,7 +70,6 @@ class PerfEvents(plugins.PluginInterface):
         for task in pslist.PsList.list_tasks(
             context, vmlinux_module_name, include_threads=True
         ):
-
             # walk the list of perf_event entries for this process
             for event in task.perf_event_list.to_list(
                 vmlinux.symbol_table_name + constants.BANG + "perf_event", "owner_entry"

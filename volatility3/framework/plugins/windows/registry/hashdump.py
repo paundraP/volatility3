@@ -350,12 +350,12 @@ class Hashdump(interfaces.plugins.PluginInterface):
 
         if not user_key:
             return []
-        return [k for k in user_key.get_subkeys() if k.Name != "Names"]
+        return [k for k in user_key.get_subkeys() if k.get_name() != "Names"]
 
     @classmethod
     def get_bootkey(cls, syshive: registry_layer.RegistryHive) -> Optional[bytes]:
         """
-        Returns the scrambled bootkey necesary to decrypt hashes
+        Returns the scrambled bootkey necessary to decrypt hashes
         """
         cs = 1
         lsa_base = f"ControlSet{cs:03}" + "\\Control\\Lsa"
