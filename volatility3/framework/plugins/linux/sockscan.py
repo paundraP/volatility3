@@ -368,7 +368,7 @@ class Sockscan(plugins.PluginInterface):
         # TODO: look into options so that sockstat.SockHandlers so that process_sock can
         # be used without a task object.
         init_task = vmlinux.object_from_symbol(symbol_name="init_task")
-        sock_handler = sockstat.SockHandlers(self.context, symbol_table_name, init_task)
+        sock_handler = sockstat.SockHandlers(self.context, kernel_module_name, init_task)
 
         # get progress_callback in order to use this in the scanners.
         # TODO: perhaps add more detail to progress, showing method in progress and number of hits found
