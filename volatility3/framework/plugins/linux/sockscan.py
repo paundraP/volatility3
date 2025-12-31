@@ -65,7 +65,7 @@ class Sockscan(plugins.PluginInterface):
         Symbols that cannot be found are ignored and not included in the results.
 
         Args:
-            symbol_table_name: The name of the kernel module on which to operate
+            kernel_module_name: The name of the kernel module on which to operate
             symbol_names: A list of symbol names to be looked up
 
         Returns:
