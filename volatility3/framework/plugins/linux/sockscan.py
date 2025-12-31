@@ -358,7 +358,7 @@ class Sockscan(plugins.PluginInterface):
         """
 
         # get vmlinux module from context in order to build objects and read symbols
-        vmlinux = self.context.modules[symbol_table_name]
+        vmlinux = self.context.modules[kernel_module_name]
 
         # get the memory layer that is to be scanned.
         memory_layer_name = self._find_memory_layer_name(symbol_table_name)
