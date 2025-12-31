@@ -411,7 +411,7 @@ class Sockscan(plugins.PluginInterface):
             # if match is from file_ops_needles attempt to walk from file object to the sock
             if match in file_ops_needles:
                 psock = self._walk_file_ops_needles(
-                    symbol_table_name, memory_layer_name, needle_addr, f_op_offset
+                    kernel_module_name, memory_layer_name, needle_addr, f_op_offset
                 )
 
             if psock is not None and sock_physical_addr not in seen_sock_physical_addr:
