@@ -339,7 +339,7 @@ class Sockscan(plugins.PluginInterface):
             )
         return None
 
-    def _generator(self, symbol_table_name: str):
+    def _generator(self, kernel_module_name: str):
         """Scans for sockets. Each row represents a kernel socket.
 
         Args:
