@@ -57,7 +57,7 @@ class Sockscan(plugins.PluginInterface):
         ]
 
     def _canonicalize_symbol_addrs(
-        self, symbol_table_name: str, symbol_names: List[str]
+        self, kernel_module_name: str, symbol_names: List[str]
     ) -> Set[bytes]:
         """Takes a list of symbol names and converts the address of each to the bytes
         as they would appear in memory so that they can be scanned for.
