@@ -367,15 +367,7 @@ class SqliteCache(CacheManagerInterface):
                 timestamp = stored_timestamp  # Default to requiring update
 
                 # See if the file is a local URL type we can handle:
-                parsed = urllib.parse.urlparse(location)
-                pathname = None
-                if parsed.scheme == "file":
-                    pathname = parsed.path
-                if parsed.scheme == "jar":
-                    inner_url = urllib.parse.urlparse(parsed.path)
-                    if inner_url.scheme == "file":
-                        pathname = inner_url.path.split("!")[0]
-
+                pathname = self._get_local_filepath(location)
                 if pathname and os.path.exists(pathname):
                     timestamp = datetime.datetime.fromtimestamp(
                         os.stat(pathname).st_mtime
