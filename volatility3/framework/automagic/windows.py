@@ -153,7 +153,8 @@ class DtbSelfRefPae(DtbSelfReferential):
             # Mask off the page bits of top level page map
             page_table_mask = b"\x00\xf0\xff\xff\xff\xff\xff\xff" * 4
             page_table = data[
-                top_pae_page - data_offset : top_pae_page
+                top_pae_page
+                - data_offset : top_pae_page
                 - data_offset
                 + (4 * self.ptr_size)
             ]
