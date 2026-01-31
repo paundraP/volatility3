@@ -89,7 +89,7 @@ class Banners(interfaces.plugins.PluginInterface):
         ):
             yield (
                 format_hints.Hex(offset),
-                f"{pdb_name.decode('latin-1')} - {guid}-{age}",
+                f"{pdb_name.decode('latin-1')}|{guid}|{age}",
             )
 
     def run(self):
