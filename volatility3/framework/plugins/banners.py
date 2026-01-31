@@ -30,6 +30,11 @@ class Banners(interfaces.plugins.PluginInterface):
                 component=scanners.RegExScanner,
                 version=(1, 0, 0),
             ),
+            requirements.VersionRequirement(
+                name="pdb_signature_scanner",
+                component=pdbutil.PdbSignatureScanner,
+                version=(1, 0, 0),
+            ),
         ]
 
     def _generator(self):
