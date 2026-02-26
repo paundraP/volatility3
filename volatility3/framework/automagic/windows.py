@@ -200,7 +200,7 @@ class WindowsIntelStacker(interfaces.automagic.StackerLayerInterface):
         (
             "Detecting Self-referential pointer for recent windows",
             [DtbSelfRef64bit()],
-            [(0x150000, 0x150000), (0x550000, 0x1A0000)],
+            [(0x150000, 0x150000), (0x550000, 0x1A0000), (0x900000, 0x100000)],
         ),
         (
             "Older windows fixed location self-referential pointers",
