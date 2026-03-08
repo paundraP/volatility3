@@ -153,8 +153,7 @@ class DtbSelfRefPae(DtbSelfReferential):
             # Mask off the page bits of top level page map
             page_table_mask = b"\x00\xf0\xff\xff\xff\xff\xff\xff" * 4
             page_table = data[
-                top_pae_page
-                - data_offset : top_pae_page
+                top_pae_page - data_offset : top_pae_page
                 - data_offset
                 + (4 * self.ptr_size)
             ]
@@ -312,8 +311,8 @@ class WindowsIntelStacker(interfaces.automagic.StackerLayerInterface):
                 valid_pointers = 0
                 for _ in get_valid_page_table_pointers(page_table, ptr_size):
                     valid_pointers += 1
-                    # 12 is an arbitrary constant
-                    if valid_pointers >= 12:
+                    # 10 is an arbitrary constant
+                    if valid_pointers >= 10:
                         # Do not consume the entire generator to enhance performance
                         return False
 
