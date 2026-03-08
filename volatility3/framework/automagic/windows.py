@@ -287,6 +287,7 @@ class WindowsIntelStacker(interfaces.automagic.StackerLayerInterface):
                 return tests.index(x[0]), x[1]
 
             def get_valid_page_table_pointers(page_table, ptr_size: int):
+                """Yields valid pointers from a page table"""
                 for index in range(0, len(page_table), ptr_size):
                     pointer = struct.unpack(
                         test.ptr_struct, page_table[index : index + ptr_size]
@@ -305,14 +306,16 @@ class WindowsIntelStacker(interfaces.automagic.StackerLayerInterface):
                     )
                 return max_ptr
 
-            def page_table_is_dummy(page_table, ptr_size):
+            def page_table_is_dummy(page_table, ptr_size: int):
+                """Verify that a page table has at least 12 valid pointers"""
                 valid_pointers = 0
                 for _ in get_valid_page_table_pointers(page_table, ptr_size):
                     valid_pointers += 1
+                    # 10 is an arbitrary constant
                     if valid_pointers >= 10:
                         # Do not consume the entire generator to enhance performance
                         return False
-                vollog.debug(f"Found {valid_pointers} valid pointers")
+
                 return True
 
             hits = sorted(list(hits), key=sort_by_tests)
@@ -323,7 +326,6 @@ class WindowsIntelStacker(interfaces.automagic.StackerLayerInterface):
                 # Turn the page tables into integers and find the largest one
                 page_table = base_layer.read(page_map_offset, 0x1000)
                 ptr_size = struct.calcsize(test.ptr_struct)
-
                 # Modern windows can have a dummy page table with only about 2 entries, so sanity check
                 if page_table_is_dummy(page_table, ptr_size):
                     vollog.debug(
