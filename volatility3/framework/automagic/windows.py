@@ -315,7 +315,7 @@ class WindowsIntelStacker(interfaces.automagic.StackerLayerInterface):
                     if valid_pointers >= 10:
                         # Do not consume the entire generator to enhance performance
                         return False
-
+                vollog.debug(f"Found {valid_pointers} valid pointers")
                 return True
 
             hits = sorted(list(hits), key=sort_by_tests)
