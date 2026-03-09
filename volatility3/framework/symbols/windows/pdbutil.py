@@ -552,9 +552,7 @@ class PdbSignatureScanner(interfaces.layers.ScannerInterface):
         )
         for match in re.finditer(pattern, data, flags=re.DOTALL):
             pdb_name = data[
-                match.start(0)
-                + 4
-                + self._RSDS_format.size : match.start(0)
+                match.start(0) + 4 + self._RSDS_format.size : match.start(0)
                 + len(match.group())
                 - 1
             ]
