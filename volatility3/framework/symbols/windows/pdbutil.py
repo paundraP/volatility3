@@ -2,13 +2,13 @@
 # which is available at https://www.volatilityfoundation.org/license/vsl-v1.0
 #
 
-import binascii
 import json
 import logging
 import lzma
 import os
 import re
 import struct
+from pathlib import PureWindowsPath
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 from urllib import parse, request
 
@@ -16,7 +16,6 @@ from volatility3 import symbols
 from volatility3.framework import constants, contexts, exceptions, interfaces
 from volatility3.framework.automagic import symbol_cache
 from volatility3.framework.configuration import requirements
-from volatility3.framework.configuration.requirements import SymbolTableRequirement
 from volatility3.framework.symbols import intermed
 from volatility3.framework.symbols.windows import pdbconv
 
@@ -36,7 +35,7 @@ class PDBUtility(interfaces.configuration.VersionableInterface):
         layer_name: str,
         offset: int,
         symbol_table_class: str = "volatility3.framework.symbols.intermed.IntermediateSymbolTable",
-        config_path: str = None,
+        config_path: Optional[str] = None,
         progress_callback: constants.ProgressCallback = None,
     ) -> Optional[str]:
         """Produces the name of a symbol table loaded from the offset for an MZ header
@@ -54,6 +53,7 @@ class PDBUtility(interfaces.configuration.VersionableInterface):
         """
         result = cls.get_guid_from_mz(context, layer_name, offset)
         if result is None:
+            vollog.debug(f"Could not get GUID for {hex(offset)}")
             return None
         guid, age, pdb_name = result
         if config_path is None:
@@ -93,7 +93,7 @@ class PDBUtility(interfaces.configuration.VersionableInterface):
         if not requirements.VersionRequirement.matches_required(
             (1, 0, 0), symbol_cache.SqliteCache.version
         ):
-            vollog.debug(f"Required version of SQLiteCache not found")
+            vollog.debug("Required version of SQLiteCache not found")
             return None
 
         identifiers_path = os.path.join(
@@ -139,7 +139,7 @@ class PDBUtility(interfaces.configuration.VersionableInterface):
         requirement_name = interfaces.configuration.path_head(config_path)
 
         # Construct the appropriate symbol table
-        requirement = SymbolTableRequirement(
+        requirement = requirements.SymbolTableRequirement(
             name=requirement_name, description="PDBUtility generated symbol table"
         )
         requirement.construct(context, parent_config_path)
@@ -225,13 +225,12 @@ class PDBUtility(interfaces.configuration.VersionableInterface):
             return None
 
         pdb_name = debug_entry.PdbFileName.decode("utf-8").strip("\x00")
+
+        # Let pathlib do the filename extraction. This will likely always be a Windows path though.
+        pdb_name = PureWindowsPath(pdb_name).name
+
         age = debug_entry.Age
-        guid = "{:08x}{:04x}{:04x}{}".format(
-            debug_entry.Signature_Data1,
-            debug_entry.Signature_Data2,
-            debug_entry.Signature_Data3,
-            binascii.hexlify(debug_entry.Signature_Data4).decode("utf-8"),
-        )
+        guid = debug_entry.Signature_String[:32]  # Removes the Age from the GUID
         return guid, age, pdb_name
 
     @classmethod
@@ -248,7 +247,6 @@ class PDBUtility(interfaces.configuration.VersionableInterface):
         # Check for writability
         filter_string = os.path.join(pdb_name, guid + "-" + str(age))
         for path in symbols.__path__:
-
             # Store any temporary files created by downloading PDB files
             tmp_files = []
             potential_output_filename = os.path.join(
@@ -291,10 +289,8 @@ class PDBUtility(interfaces.configuration.VersionableInterface):
                         )
                 break
             except PermissionError:
-                vollog.warning(
-                    "Cannot write necessary symbol file, please check permissions on {}".format(
-                        potential_output_filename
-                    )
+                vollog.debug(
+                    f"Cannot write necessary symbol file, please check permissions on {potential_output_filename}"
                 )
                 continue
             finally:
@@ -352,7 +348,7 @@ class PDBUtility(interfaces.configuration.VersionableInterface):
         if end is None:
             end = ctx.layers[layer_name].maximum_address
 
-        for (GUID, age, pdb_name, signature_offset) in ctx.layers[layer_name].scan(
+        for GUID, age, pdb_name, signature_offset in ctx.layers[layer_name].scan(
             ctx,
             PdbSignatureScanner(pdb_names),
             progress_callback=progress_callback,
@@ -391,8 +387,8 @@ class PDBUtility(interfaces.configuration.VersionableInterface):
         config_path: str,
         layer_name: str,
         pdb_name: str,
-        module_offset: int = None,
-        module_size: int = None,
+        module_offset: Optional[int] = None,
+        module_size: Optional[int] = None,
     ) -> str:
         """Creates symbol table for a module in the specified layer_name.
 
@@ -412,6 +408,12 @@ class PDBUtility(interfaces.configuration.VersionableInterface):
         _, symbol_table_name = cls._modtable_from_pdb(
             context, config_path, layer_name, pdb_name, module_offset, module_size
         )
+
+        if symbol_table_name is None:
+            raise exceptions.SymbolSpaceError(
+                f"Symbol table could not be reconstructed for module {pdb_name}"
+            )
+
         return symbol_table_name
 
     @classmethod
@@ -421,11 +423,10 @@ class PDBUtility(interfaces.configuration.VersionableInterface):
         config_path: str,
         layer_name: str,
         pdb_name: str,
-        module_offset: int = None,
-        module_size: int = None,
+        module_offset: Optional[int] = None,
+        module_size: Optional[int] = None,
         create_module: bool = False,
     ) -> Tuple[Optional[str], Optional[str]]:
-
         if module_offset is None:
             module_offset = context.layers[layer_name].minimum_address
         if module_size is None:
@@ -443,7 +444,7 @@ class PDBUtility(interfaces.configuration.VersionableInterface):
         )
 
         if not guids:
-            raise exceptions.VolatilityException(
+            raise exceptions.SymbolSpaceError(
                 f"Did not find GUID of {pdb_name} in module @ 0x{module_offset:x}!"
             )
 
@@ -482,8 +483,8 @@ class PDBUtility(interfaces.configuration.VersionableInterface):
         config_path: str,
         layer_name: str,
         pdb_name: str,
-        module_offset: int = None,
-        module_size: int = None,
+        module_offset: Optional[int] = None,
+        module_size: Optional[int] = None,
     ) -> str:
         """Creates a module in the specified layer_name based on a pdb name.
 
@@ -524,6 +525,10 @@ class PdbSignatureScanner(interfaces.layers.ScannerInterface):
     .. note:: The pdb_names must be a list of byte strings, unicode strs will not match against the data scanned
     """
 
+    _version = (1, 0, 0)
+
+    _required_framework_version = (2, 27, 0)
+
     overlap = 0x4000
     """The size of overlap needed for the signature to ensure data cannot hide between two scanned chunks"""
     thread_safe = True
@@ -547,9 +552,7 @@ class PdbSignatureScanner(interfaces.layers.ScannerInterface):
         )
         for match in re.finditer(pattern, data, flags=re.DOTALL):
             pdb_name = data[
-                match.start(0)
-                + 4
-                + self._RSDS_format.size : match.start(0)
+                match.start(0) + 4 + self._RSDS_format.size : match.start(0)
                 + len(match.group())
                 - 1
             ]

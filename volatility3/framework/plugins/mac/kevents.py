@@ -71,8 +71,8 @@ class Kevents(interfaces.plugins.PluginInterface):
                 description="Kernel module for the OS",
                 architectures=["Intel32", "Intel64"],
             ),
-            requirements.PluginRequirement(
-                name="pslist", plugin=pslist.PsList, version=(3, 0, 0)
+            requirements.VersionRequirement(
+                name="pslist", component=pslist.PsList, version=(3, 0, 0)
             ),
             requirements.VersionRequirement(
                 name="macutils", component=mac.MacUtilities, version=(1, 2, 0)
@@ -116,11 +116,10 @@ class Kevents(interfaces.plugins.PluginInterface):
             )
 
         except exceptions.InvalidAddressException:
-            return
+            return None
 
         for klist in klist_array:
-            for kn in mac.MacUtilities.walk_slist(klist, "kn_link"):
-                yield kn
+            yield from mac.MacUtilities.walk_slist(klist, "kn_link")
 
     @classmethod
     def _get_task_kevents(cls, kernel, task):
@@ -140,7 +139,7 @@ class Kevents(interfaces.plugins.PluginInterface):
         try:
             p_klist = task.p_klist
         except exceptions.InvalidAddressException:
-            return
+            return None
 
         for kn in mac.MacUtilities.walk_slist(p_klist, "kn_link"):
             yield kn
@@ -184,7 +183,6 @@ class Kevents(interfaces.plugins.PluginInterface):
         for task_name, pid, kn in self.list_kernel_events(
             self.context, self.config["kernel"], filter_func=filter_func
         ):
-
             filter_index = kn.kn_kevent.filter * -1
             if filter_index in self.event_types:
                 filter_name = self.event_types[filter_index]

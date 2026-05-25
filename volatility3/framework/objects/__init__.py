@@ -35,13 +35,13 @@ def convert_data_to_value(
     data_format: DataFormatInfo,
 ) -> TUnion[int, float, bytes, str, bool]:
     """Converts a series of bytes to a particular type of value."""
-    if struct_type == int:
+    if struct_type is int:
         return int.from_bytes(
             data, byteorder=data_format.byteorder, signed=data_format.signed
         )
-    if struct_type == bool:
+    if struct_type is bool:
         struct_format = "?"
-    elif struct_type == float:
+    elif struct_type is float:
         float_vals = "zzezfzzzd"
         if (
             data_format.length > len(float_vals)
@@ -70,7 +70,7 @@ def convert_value_to_data(
             f"Written value is not of the correct type for {struct_type.__name__}"
         )
 
-    if struct_type == int and isinstance(value, int):
+    if struct_type is int and isinstance(value, int):
         # Doubling up on the isinstance is for mypy
         return int.to_bytes(
             value,
@@ -78,9 +78,9 @@ def convert_value_to_data(
             byteorder=data_format.byteorder,
             signed=data_format.signed,
         )
-    if struct_type == bool:
+    if struct_type is bool:
         struct_format = "?"
-    elif struct_type == float:
+    elif struct_type is float:
         float_vals = "zzezfzzzd"
         if (
             data_format.length > len(float_vals)
@@ -152,7 +152,7 @@ class PrimitiveObject(interfaces.objects.ObjectInterface):
         type_name: str,
         object_info: interfaces.objects.ObjectInformation,
         data_format: DataFormatInfo,
-        new_value: TUnion[int, float, bool, bytes, str] = None,
+        new_value: Optional[TUnion[int, float, bool, bytes, str]] = None,
         **kwargs,
     ) -> "PrimitiveObject":
         """Creates the appropriate class and returns it so that the native type
@@ -356,8 +356,9 @@ class String(PrimitiveObject, str):
             ),
             **params,
         )
-        if value.find("\x00") >= 0:
-            value = value[: value.find("\x00")]
+        index = value.find("\x00")
+        if index >= 0:
+            value = value[:index]
         return value
 
     class VolTemplateProxy(interfaces.objects.ObjectInterface.VolTemplateProxy):
@@ -401,13 +402,35 @@ class Pointer(Integer):
         pointer should be recast.  The "pointer" must always live within
         the space (even if the data provided is invalid).
         """
+        mask = context.layers[object_info.native_layer_name].address_mask
+        new = (
+            cls._get_raw_value(
+                context, data_format, object_info.layer_name, object_info.offset
+            )
+            & mask
+        )
+        return new
+
+    @classmethod
+    def _get_raw_value(
+        cls,
+        context: interfaces.context.ContextInterface,
+        data_format: DataFormatInfo,
+        layer_name: str,
+        offset: int,
+    ) -> int:
         length, endian, signed = data_format
         if signed:
             raise ValueError("Pointers cannot have signed values")
-        mask = context.layers[object_info.native_layer_name].address_mask
-        data = context.layers.read(object_info.layer_name, object_info.offset, length)
+        data = context.layers.read(layer_name, offset, length)
         value = int.from_bytes(data, byteorder=endian, signed=signed)
-        return value & mask
+        return value
+
+    def get_raw_value(self) -> int:
+        raw = self._get_raw_value(
+            self._context, self.vol.data_format, self.vol.layer_name, self.vol.offset
+        )
+        return raw
 
     def dereference(
         self, layer_name: Optional[str] = None
@@ -435,6 +458,7 @@ class Pointer(Integer):
                     offset=offset,
                     parent=self,
                     size=self.vol.subtype.size,
+                    native_layer_name=layer_name,
                 ),
             )
         return self._cache[layer_name]
@@ -442,7 +466,7 @@ class Pointer(Integer):
     def is_readable(self, layer_name: Optional[str] = None) -> bool:
         """Determines whether the address of this pointer can be read from
         memory."""
-        layer_name = layer_name or self.vol.layer_name
+        layer_name = layer_name or self.vol.native_layer_name
         return self._context.layers[layer_name].is_valid(self, self.vol.subtype.size)
 
     def __getattr__(self, attr: str) -> Any:
@@ -593,17 +617,19 @@ class Enumeration(interfaces.objects.ObjectInterface, int):
         inverse_choices: Dict[int, str] = {}
         for k, v in choices.items():
             if v in inverse_choices:
-                # Technically this shouldn't be a problem, but since we inverse cache
-                # and can't map one value to two possibilities we throw an exception during build
-                # We can remove/work around this if it proves a common issue
-                raise ValueError(
-                    f"Enumeration value {v} duplicated as {k} and {inverse_choices[v]}"
+                vollog.log(
+                    constants.LOGLEVEL_VVV,
+                    f"Enumeration value {v} duplicated as {k}. Keeping name {inverse_choices[v]}",
                 )
+                continue
             inverse_choices[v] = k
         return inverse_choices
 
-    def lookup(self, value: int = None) -> str:
-        """Looks up an individual value and returns the associated name."""
+    def lookup(self, value: Optional[int] = None) -> str:
+        """Looks up an individual value and returns the associated name.
+
+        If multiple identifiers map to the same value, the first matching identifier will be returned
+        """
         if value is None:
             return self.lookup(self)
         if value in self._inverse_choices:
@@ -640,7 +666,10 @@ class Enumeration(interfaces.objects.ObjectInterface, int):
 
         @classmethod
         def lookup(cls, template: interfaces.objects.Template, value: int) -> str:
-            """Looks up an individual value and returns the associated name."""
+            """Looks up an individual value and returns the associated name.
+
+            If multiple identifiers map to the same value, the first matching identifier will be returned
+            """
             _inverse_choices = Enumeration._generate_inverse_choices(
                 template.vol["choices"]
             )
@@ -685,7 +714,7 @@ class Array(interfaces.objects.ObjectInterface, collections.abc.Sequence):
         type_name: str,
         object_info: interfaces.objects.ObjectInformation,
         count: int = 0,
-        subtype: templates.ObjectTemplate = None,
+        subtype: Optional[templates.ObjectTemplate] = None,
     ) -> None:
         super().__init__(context=context, type_name=type_name, object_info=object_info)
         self._vol["count"] = count
@@ -763,12 +792,10 @@ class Array(interfaces.objects.ObjectInterface, collections.abc.Sequence):
             raise IndexError(f"Member not present in array template: {child}")
 
     @overload
-    def __getitem__(self, i: int) -> interfaces.objects.Template:
-        ...
+    def __getitem__(self, i: int) -> interfaces.objects.Template: ...
 
     @overload
-    def __getitem__(self, s: slice) -> List[interfaces.objects.Template]:
-        ...
+    def __getitem__(self, s: slice) -> List[interfaces.objects.Template]: ...
 
     def __getitem__(self, i):
         """Returns the i-th item from the array."""
@@ -785,7 +812,7 @@ class Array(interfaces.objects.ObjectInterface, collections.abc.Sequence):
                 layer_name=self.vol.layer_name,
                 offset=mask & (self.vol.offset + (self.vol.subtype.size * index)),
                 parent=self,
-                native_layer_name=self.vol.native_layer_name,
+                native_layer_name=self.vol.native_layer_name or self.vol.layer_name,
                 size=self.vol.subtype.size,
             )
             result += [self.vol.subtype(context=self._context, object_info=object_info)]
@@ -921,14 +948,12 @@ class AggregateType(interfaces.objects.ObjectInterface):
             if isinstance(cls, agg_type):
                 agg_name = agg_type.__name__
 
-        assert isinstance(
-            members, collections.abc.Mapping
-        ), f"{agg_name} members parameter must be a mapping: {type(members)}"
+        assert isinstance(members, collections.abc.Mapping), (
+            f"{agg_name} members parameter must be a mapping: {type(members)}"
+        )
         assert all(
-            [
-                (isinstance(member, tuple) and len(member) == 2)
-                for member in members.values()
-            ]
+            (isinstance(member, tuple) and len(member) == 2)
+            for member in members.values()
         ), f"{agg_name} members must be a tuple of relative_offsets and templates"
 
     def member(self, attr: str = "member") -> object:
@@ -954,7 +979,7 @@ class AggregateType(interfaces.objects.ObjectInterface):
                 offset=mask & (self.vol.offset + relative_offset),
                 member_name=attr,
                 parent=self,
-                native_layer_name=self.vol.native_layer_name,
+                native_layer_name=self.vol.native_layer_name or self.vol.layer_name,
                 size=template.size,
             )
             member = template(context=self._context, object_info=object_info)

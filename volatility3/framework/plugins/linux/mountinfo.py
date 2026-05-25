@@ -9,7 +9,9 @@ from typing import Tuple, List, Iterable, Union
 from volatility3.framework import renderers, interfaces
 from volatility3.framework.configuration import requirements
 from volatility3.framework.interfaces import plugins
+from volatility3.framework.symbols import linux
 from volatility3.plugins.linux import pslist
+
 
 vollog = logging.getLogger(__name__)
 
@@ -34,8 +36,7 @@ class MountInfo(plugins.PluginInterface):
     """Lists mount points on processes mount namespaces"""
 
     _required_framework_version = (2, 2, 0)
-
-    _version = (1, 0, 0)
+    _version = (1, 2, 4)
 
     @classmethod
     def get_requirements(cls) -> List[interfaces.configuration.RequirementInterface]:
@@ -45,8 +46,11 @@ class MountInfo(plugins.PluginInterface):
                 description="Linux kernel",
                 architectures=["Intel32", "Intel64"],
             ),
-            requirements.PluginRequirement(
-                name="pslist", plugin=pslist.PsList, version=(2, 0, 0)
+            requirements.VersionRequirement(
+                name="pslist", component=pslist.PsList, version=(4, 0, 0)
+            ),
+            requirements.VersionRequirement(
+                name="linuxutils", component=linux.LinuxUtilities, version=(2, 1, 0)
             ),
             requirements.ListRequirement(
                 name="pids",
@@ -72,37 +76,6 @@ class MountInfo(plugins.PluginInterface):
         ]
 
     @classmethod
-    def _do_get_path(cls, mnt, fs_root) -> Union[None, str]:
-        """It mimics the Linux kernel prepend_path function."""
-        vfsmnt = mnt.mnt
-        dentry = vfsmnt.get_mnt_root()
-
-        path_reversed = []
-        while dentry != fs_root.dentry or vfsmnt.vol.offset != fs_root.mnt:
-            if dentry == vfsmnt.get_mnt_root() or dentry.is_root():
-                parent = mnt.get_mnt_parent().dereference()
-                # Escaped?
-                if dentry != vfsmnt.get_mnt_root():
-                    return None
-
-                # Global root?
-                if mnt.vol.offset != parent.vol.offset:
-                    dentry = mnt.get_mnt_mountpoint()
-                    mnt = parent
-                    vfsmnt = mnt.mnt
-                    continue
-
-                return None
-
-            parent = dentry.d_parent
-            dname = dentry.d_name.name_as_str()
-            path_reversed.append(dname.strip("/"))
-            dentry = parent
-
-        path = "/" + "/".join(reversed(path_reversed))
-        return path
-
-    @classmethod
     def get_mountinfo(
         cls, mnt, task
     ) -> Union[
@@ -115,15 +88,18 @@ class MountInfo(plugins.PluginInterface):
         if not mnt_root:
             return None
 
-        path_root = cls._do_get_path(mnt, task.fs.root)
-        if path_root is None:
+        path_root = linux.LinuxUtilities.get_path_mnt(task, mnt)
+        if not path_root:
             return None
 
         mnt_root_path = mnt_root.path()
-        superblock = mnt.get_mnt_sb()
 
         mnt_id: int = mnt.mnt_id
         parent_id: int = mnt.mnt_parent.mnt_id
+
+        superblock = mnt.get_mnt_sb()
+        if not (superblock and superblock.is_readable()):
+            return None
 
         st_dev = f"{superblock.major}:{superblock.minor}"
 
@@ -169,43 +145,64 @@ class MountInfo(plugins.PluginInterface):
             sb_opts,
         )
 
+    @staticmethod
     def _get_tasks_mountpoints(
-        self, tasks: Iterable[interfaces.objects.ObjectInterface], per_namespace: bool
+        tasks: Iterable[interfaces.objects.ObjectInterface],
+        filtered_by_pids: bool = False,
     ):
-        seen_namespaces = set()
+        seen_mountpoints = set()
         for task in tasks:
             if not (
                 task
                 and task.fs
-                and task.fs.root
+                and task.fs.is_readable()
                 and task.nsproxy
+                and task.nsproxy.is_readable()
                 and task.nsproxy.mnt_ns
+                and task.nsproxy.mnt_ns.is_readable()
             ):
-                # This task doesn't have all the information required
+                # This task doesn't have all the information required.
+                # It should be a kernel < 2.6.30
                 continue
 
             mnt_namespace = task.nsproxy.mnt_ns
-            mnt_ns_id = mnt_namespace.get_inode()
-
-            if per_namespace:
-                if mnt_ns_id in seen_namespaces:
-                    continue
-                else:
-                    seen_namespaces.add(mnt_ns_id)
+            try:
+                mnt_ns_id = mnt_namespace.get_inode()
+            except AttributeError:
+                mnt_ns_id = renderers.NotAvailableValue()
 
             for mount in mnt_namespace.get_mount_points():
+                # When PIDs are filtered, it makes sense that the user want to
+                # see each of those processes mount points. So we don't filter
+                # by mount id in this case.
+                if not filtered_by_pids:
+                    mnt_id = int(mount.mnt_id)
+                    if mnt_id in seen_mountpoints:
+                        continue
+                    else:
+                        seen_mountpoints.add(mnt_id)
+
                 yield task, mount, mnt_ns_id
 
     def _generator(
         self,
         tasks: Iterable[interfaces.objects.ObjectInterface],
         mnt_ns_ids: List[int],
-        mount_format: bool,
-        per_namespace: bool,
+        mount_format: bool = False,
+        filtered_by_pids: bool = False,
     ) -> Iterable[Tuple[int, Tuple]]:
+        show_filter_warning = False
+        for task, mnt, mnt_ns_id in self._get_tasks_mountpoints(
+            tasks, filtered_by_pids
+        ):
+            if mnt_ns_ids and isinstance(mnt_ns_id, renderers.NotAvailableValue):
+                show_filter_warning = True
 
-        for task, mnt, mnt_ns_id in self._get_tasks_mountpoints(tasks, per_namespace):
-            if mnt_ns_ids and mnt_ns_id not in mnt_ns_ids:
+            if (
+                not isinstance(mnt_ns_id, renderers.NotAvailableValue)
+                and mnt_ns_ids
+                and mnt_ns_id not in mnt_ns_ids
+            ):
                 continue
 
             mnt_info = self.get_mountinfo(mnt, task)
@@ -243,11 +240,52 @@ class MountInfo(plugins.PluginInterface):
                 ]
 
             fields_values = [mnt_ns_id]
-            if not per_namespace:
+            if filtered_by_pids:
                 fields_values.append(task.pid)
             fields_values.extend(extra_fields_values)
 
             yield (0, fields_values)
+
+        if show_filter_warning:
+            vollog.warning(
+                "Could not filter by mount namespace id. This field is not available in this kernel."
+            )
+
+    @classmethod
+    def get_superblocks(
+        cls,
+        context: interfaces.context.ContextInterface,
+        vmlinux_module_name: str,
+    ) -> Iterable[interfaces.objects.ObjectInterface]:
+        """Yield file system superblocks based on the task's mounted filesystems.
+
+        Args:
+            context: The context to retrieve required elements (layers, symbol tables) from
+            vmlinux_module_name: The name of the kernel module on which to operate
+
+        Yields:
+            super_block: Kernel's struct super_block object
+        """
+        # No filter so that we get all the mount namespaces from all tasks
+        tasks = pslist.PsList.list_tasks(context, vmlinux_module_name)
+
+        seen_sb_ptr = set()
+        for task, mnt, _mnt_ns_id in cls._get_tasks_mountpoints(tasks):
+            path_root = linux.LinuxUtilities.get_path_mnt(task, mnt)
+            if not path_root:
+                continue
+
+            sb_ptr = mnt.get_mnt_sb()
+            if not (sb_ptr and sb_ptr.is_readable()):
+                continue
+
+            if sb_ptr in seen_sb_ptr:
+                continue
+            seen_sb_ptr.add(int(sb_ptr))
+
+            superblock = sb_ptr.dereference()
+
+            yield superblock, path_root
 
     def run(self):
         pids = self.config.get("pids")
@@ -264,9 +302,9 @@ class MountInfo(plugins.PluginInterface):
         # to displays the mountpoints per namespace.
         if pids:
             columns.append(("PID", int))
-            per_namespace = False
+            filtered_by_pids = True
         else:
-            per_namespace = True
+            filtered_by_pids = False
 
         if self.config.get("mount-format"):
             extra_columns = [
@@ -293,5 +331,6 @@ class MountInfo(plugins.PluginInterface):
         columns.extend(extra_columns)
 
         return renderers.TreeGrid(
-            columns, self._generator(tasks, mount_ns_ids, mount_format, per_namespace)
+            columns,
+            self._generator(tasks, mount_ns_ids, mount_format, filtered_by_pids),
         )

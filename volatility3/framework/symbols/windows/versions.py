@@ -1,7 +1,7 @@
 import logging
-from typing import Callable, Tuple, List, Optional
+from typing import Callable, List, Optional, Tuple
 
-from volatility3.framework import interfaces, constants, exceptions
+from volatility3.framework import constants, exceptions, interfaces
 
 vollog = logging.getLogger(__name__)
 
@@ -88,14 +88,57 @@ class OsDistinguisher:
         return True
 
 
-is_windows_8_1_or_later = OsDistinguisher(
-    version_check=lambda x: x >= (6, 3),
-    fallback_checks=[("_KPRCB", "PendingTickFlags", True)],
+is_windows_xp = OsDistinguisher(
+    version_check=lambda x: (5, 1) <= x < (5, 2),
+    fallback_checks=[
+        ("KdCopyDataBlock", None, False),
+        ("_HANDLE_TABLE", "HandleCount", True),
+    ],
+)
+
+is_windows_xp_sp2 = OsDistinguisher(
+    version_check=lambda x: (5, 1) <= x < (5, 2),
+    fallback_checks=[
+        ("KdCopyDataBlock", None, False),
+        ("_MMFREE_POOL_ENTRY", None, False),
+        ("_HANDLE_TABLE", "HandleCount", True),
+    ],
+)
+
+is_windows_xp_sp3 = OsDistinguisher(
+    version_check=lambda x: (5, 1) <= x < (5, 2),
+    fallback_checks=[
+        ("KdCopyDataBlock", None, False),
+        ("_MMFREE_POOL_ENTRY", None, True),
+        ("_HANDLE_TABLE", "HandleCount", True),
+    ],
+)
+
+is_xp_or_2003 = OsDistinguisher(
+    version_check=lambda x: (5, 1) <= x < (6, 0),
+    fallback_checks=[
+        ("KdCopyDataBlock", None, False),
+        ("_HANDLE_TABLE", "HandleCount", True),
+    ],
+)
+
+is_2003 = OsDistinguisher(
+    version_check=lambda x: (5, 2) <= x < (5, 3),
+    fallback_checks=[
+        ("KdCopyDataBlock", None, False),
+        ("_HANDLE_TABLE", "HandleCount", True),
+        ("_MM_AVL_TABLE", None, True),
+    ],
 )
 
 is_vista_or_later = OsDistinguisher(
     version_check=lambda x: x >= (6, 0),
     fallback_checks=[("KdCopyDataBlock", None, True)],
+)
+
+is_windows_8_1_or_later = OsDistinguisher(
+    version_check=lambda x: x >= (6, 3),
+    fallback_checks=[("_KPRCB", "PendingTickFlags", True)],
 )
 
 is_win10 = OsDistinguisher(
@@ -106,19 +149,11 @@ is_win10 = OsDistinguisher(
     ],
 )
 
-is_windows_xp = OsDistinguisher(
-    version_check=lambda x: (5, 1) <= x < (5, 2),
+is_win10_10586_or_later = OsDistinguisher(
+    version_check=lambda x: x >= (10, 0, 10586),
     fallback_checks=[
-        ("KdCopyDataBlock", None, False),
-        ("_HANDLE_TABLE", "HandleCount", True),
-    ],
-)
-
-is_xp_or_2003 = OsDistinguisher(
-    version_check=lambda x: (5, 1) <= x < (6, 0),
-    fallback_checks=[
-        ("KdCopyDataBlock", None, False),
-        ("_HANDLE_TABLE", "HandleCount", True),
+        ("_UNLOADED_DRIVERS", None, False),
+        ("ObHeaderCookie", None, True),
     ],
 )
 
@@ -141,6 +176,15 @@ is_win10_15063 = OsDistinguisher(
     ],
 )
 
+is_win10_15063_or_later = OsDistinguisher(
+    version_check=lambda x: x >= (10, 0, 15063),
+    fallback_checks=[
+        ("ObHeaderCookie", None, True),
+        ("_HANDLE_TABLE", "HandleCount", False),
+        ("_EPROCESS", "KeepAliveCounter", False),
+    ],
+)
+
 is_win10_16299_or_later = OsDistinguisher(
     version_check=lambda x: x >= (10, 0, 16299),
     fallback_checks=[
@@ -151,9 +195,67 @@ is_win10_16299_or_later = OsDistinguisher(
     ],
 )
 
+is_win10_17134_or_later = OsDistinguisher(
+    version_check=lambda x: x >= (10, 0, 17134),
+    fallback_checks=[
+        ("_EPROCESS", "ProcessFirstResume", True),
+        ("_EPROCESS", "HighMemoryPriority", True),
+    ],
+)
+
+is_win10_17735_or_later = OsDistinguisher(
+    version_check=lambda x: x >= (10, 0, 17735),
+    fallback_checks=[
+        ("_EPROCESS", "VmProcessorHost", True),
+        ("_EPROCESS", "VdmObjects", False),
+    ],
+)
+
+is_win10_17763_or_later = OsDistinguisher(
+    version_check=lambda x: x >= (10, 0, 17763),
+    fallback_checks=[
+        ("_EPROCESS", "TrustletIdentity", False),
+        ("ParentSecurityDomain", None, True),
+    ],
+)
+
+is_win10_18362_or_later = OsDistinguisher(
+    version_check=lambda x: x >= (10, 0, 18362),
+    fallback_checks=[
+        ("ObHeaderCookie", None, True),
+        ("_CM_CACHED_VALUE_INDEX", None, False),
+        ("_WNF_PROCESS_CONTEXT", None, True),
+    ],
+)
+
 is_win10_18363_or_later = OsDistinguisher(
     version_check=lambda x: x >= (10, 0, 18363),
     fallback_checks=[("_KQOS_GROUPING_SETS", None, True)],
+)
+
+is_win10_19041_or_later = OsDistinguisher(
+    version_check=lambda x: x >= (10, 0, 19041),
+    fallback_checks=[
+        ("_EPROCESS", "TimerResolutionIgnore", True),
+        ("_EPROCESS", "VmProcessorHostTransition", True),
+        ("_KQOS_GROUPING_SETS", None, True),
+    ],
+)
+
+is_win10_19577_or_later = OsDistinguisher(
+    version_check=lambda x: x >= (10, 0, 19577),
+    fallback_checks=[
+        ("_EPROCESS", "PaeTop", False),
+        ("_EPROCESS", "IdealProcessorAssignmentBlock", True),
+    ],
+)
+
+is_win10_25398_or_later = OsDistinguisher(
+    version_check=lambda x: x >= (10, 0, 25398),
+    fallback_checks=[
+        ("_EPROCESS", "MmSlabIdentity", True),
+        ("_EPROCESS", "EnableProcessImpersonationLogging", True),
+    ],
 )
 
 is_windows_10 = OsDistinguisher(
@@ -165,6 +267,31 @@ is_windows_8_or_later = OsDistinguisher(
     version_check=lambda x: x >= (6, 2),
     fallback_checks=[("_HANDLE_TABLE", "HandleCount", False)],
 )
+
+is_windows_7_sp0 = OsDistinguisher(
+    version_check=lambda x: x == (6, 1, 7600),
+    fallback_checks=[
+        ("_EPROCESS", "VdmObjects", True),
+        ("_EPROCESS", "UmsScheduledThreads", False),
+        # Dropped after vista
+        ("_EPROCESS", "QuotaUsage", False),
+        # Added win8
+        ("_EPROCESS", "WnfContext", False),
+    ],
+)
+
+is_windows_7_sp1 = OsDistinguisher(
+    version_check=lambda x: x == (6, 1, 7601),
+    fallback_checks=[
+        ("_EPROCESS", "VdmObjects", False),
+        ("_EPROCESS", "UmsScheduledThreads", True),
+        # Dropped after vista
+        ("_EPROCESS", "QuotaUsage", False),
+        # Added win8
+        ("_EPROCESS", "WnfContext", False),
+    ],
+)
+
 # Technically, this is win7 or less
 is_windows_7 = OsDistinguisher(
     version_check=lambda x: x == (6, 1),

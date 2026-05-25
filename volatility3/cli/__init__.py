@@ -10,6 +10,7 @@ User interfaces make use of the framework to:
  * run the plugin
  * display the results
 """
+
 import argparse
 import inspect
 import io
@@ -19,13 +20,20 @@ import os
 import sys
 import tempfile
 import traceback
-from typing import Any, Dict, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 from urllib import parse, request
+
+try:
+    import argcomplete
+
+    HAS_ARGCOMPLETE = True
+except ImportError:
+    HAS_ARGCOMPLETE = False
 
 import volatility3.plugins
 import volatility3.symbols
 from volatility3 import framework
-from volatility3.cli import text_renderer, volargparse
+from volatility3.cli import text_filter, text_renderer, volargparse
 from volatility3.framework import (
     automagic,
     configuration,
@@ -49,14 +57,14 @@ formatter = logging.Formatter("%(levelname)-8s %(name)-12s: %(message)s")
 console.setFormatter(formatter)
 
 
-class PrintedProgress(object):
+class PrintedProgress:
     """A progress handler that prints the progress value and the description
     onto the command line."""
 
     def __init__(self):
         self._max_message_len = 0
 
-    def __call__(self, progress: Union[int, float], description: str = None):
+    def __call__(self, progress: Union[int, float], description: Optional[str] = None):
         """A simple function for providing text-based feedback.
 
         .. warning:: Only for development use.
@@ -73,14 +81,14 @@ class PrintedProgress(object):
 class MuteProgress(PrintedProgress):
     """A dummy progress handler that produces no output when called."""
 
-    def __call__(self, progress: Union[int, float], description: str = None):
+    def __call__(self, progress: Union[int, float], description: Optional[str] = None):
         pass
 
 
 class CommandLine:
     """Constructs a command-line interface object for users to run plugins."""
 
-    CLI_NAME = "volatility"
+    CLI_NAME = os.path.basename(sys.argv[0])  # vol or volatility
 
     def __init__(self):
         self.setup_logging()
@@ -98,12 +106,8 @@ class CommandLine:
 
         volatility3.framework.require_interface_version(2, 0, 0)
 
-        renderers = dict(
-            [
-                (x.name.lower(), x)
-                for x in framework.class_subclasses(text_renderer.CLIRenderer)
-            ]
-        )
+        # Load up system defaults
+        delayed_logs, default_config = self.load_system_defaults("vol.json")
 
         parser = volargparse.HelpfulArgParser(
             add_help=False,
@@ -115,9 +119,7 @@ class CommandLine:
             "--help",
             action="help",
             default=argparse.SUPPRESS,
-            help="Show this help message and exit, for specific plugin options use '{} <pluginname> --help'".format(
-                parser.prog
-            ),
+            help=f"Show this help message and exit, for specific plugin options use '{parser.prog} <pluginname> --help'",
         )
         parser.add_argument(
             "-c",
@@ -185,14 +187,6 @@ class CommandLine:
             action="store_true",
         )
         parser.add_argument(
-            "-r",
-            "--renderer",
-            metavar="RENDERER",
-            help=f"Determines how to render the output ({', '.join(list(renderers))})",
-            default="quick",
-            choices=list(renderers),
-        )
-        parser.add_argument(
             "-f",
             "--file",
             metavar="FILE",
@@ -224,23 +218,67 @@ class CommandLine:
             default=constants.CACHE_PATH,
             type=str,
         )
-        parser.add_argument(
+        isf_group = parser.add_mutually_exclusive_group()
+        isf_group.add_argument(
             "--offline",
             help="Do not search online for additional JSON files",
             default=False,
             action="store_true",
         )
+        isf_group.add_argument(
+            "-u",
+            "--remote-isf-url",
+            metavar="URL",
+            help="Search online for ISF json files",
+            default=constants.REMOTE_ISF_URL,
+            type=str,
+        )
+        parser.add_argument(
+            "--filters",
+            help="List of filters to apply to the output (in the form of [+-]columname,pattern[!])",
+            default=[],
+            action="append",
+        )
+        parser.add_argument(
+            "--hide-columns",
+            help="Case-insensitive space separated list of prefixes to determine which columns to hide in the output if provided",
+            default=None,
+            action="extend",
+            nargs="*",
+            type=str,
+        )
+
+        parser.set_defaults(**default_config)
 
         # We have to filter out help, otherwise parse_known_args will trigger the help message before having
         # processed the plugin choice or had the plugin subparser added.
         known_args = [arg for arg in sys.argv if arg != "--help" and arg != "-h"]
         partial_args, _ = parser.parse_known_args(known_args)
 
-        banner_output = sys.stdout
-        if renderers[partial_args.renderer].structured_output:
-            banner_output = sys.stderr
-        banner_output.write(f"Volatility 3 Framework {constants.PACKAGE_VERSION}\n")
+        ### Start up logging
+        if partial_args.log:
+            file_logger = logging.FileHandler(partial_args.log)
+            file_logger.setLevel(1)
+            file_formatter = logging.Formatter(
+                datefmt="%y-%m-%d %H:%M:%S",
+                fmt="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
+            )
+            file_logger.setFormatter(file_formatter)
+            rootlog.addHandler(file_logger)
+            vollog.info("Logging started")
 
+        self.order_extra_verbose_levels()
+        if partial_args.verbosity < 3:
+            if partial_args.verbosity < 1:
+                sys.tracebacklimit = None
+            console.setLevel(logging.WARNING - (partial_args.verbosity * 10))
+        else:
+            console.setLevel(logging.DEBUG - (partial_args.verbosity - 2))
+
+        for level, msg in delayed_logs:
+            vollog.log(level, msg)
+
+        ### Alter constants if necessary
         if partial_args.plugin_dirs:
             volatility3.plugins.__path__ = [
                 os.path.abspath(p) for p in partial_args.plugin_dirs.split(";")
@@ -253,23 +291,6 @@ class CommandLine:
 
         if partial_args.cache_path:
             constants.CACHE_PATH = partial_args.cache_path
-
-        if partial_args.log:
-            file_logger = logging.FileHandler(partial_args.log)
-            file_logger.setLevel(1)
-            file_formatter = logging.Formatter(
-                datefmt="%y-%m-%d %H:%M:%S",
-                fmt="%(asctime)s %(name)-12s %(levelname)-8s %(message)s",
-            )
-            file_logger.setFormatter(file_formatter)
-            rootlog.addHandler(file_logger)
-            vollog.info("Logging started")
-        if partial_args.verbosity < 3:
-            if partial_args.verbosity < 1:
-                sys.tracebacklimit = None
-            console.setLevel(30 - (partial_args.verbosity * 10))
-        else:
-            console.setLevel(10 - (partial_args.verbosity - 2))
 
         vollog.info(f"Volatility plugins path: {volatility3.plugins.__path__}")
         vollog.info(f"Volatility symbols path: {volatility3.symbols.__path__}")
@@ -287,6 +308,8 @@ class CommandLine:
 
         if partial_args.offline:
             constants.OFFLINE = partial_args.offline
+        elif partial_args.remote_isf_url:
+            constants.REMOTE_ISF_URL = partial_args.remote_isf_url
 
         # Do the initialization
         ctx = contexts.Context()  # Construct a blank context
@@ -303,6 +326,24 @@ class CommandLine:
 
         plugin_list = framework.list_plugins()
 
+        # Discover renderers after plugin directories are loaded
+        # This allows custom renderers to be found in plugin directories
+        renderers = dict(
+            [
+                (x.name.lower(), x)
+                for x in framework.class_subclasses(text_renderer.CLIRenderer)
+            ]
+        )
+
+        parser.add_argument(
+            "-r",
+            "--renderer",
+            metavar="RENDERER",
+            help=f"Determines how to render the output ({', '.join(list(renderers))})",
+            default="quick",
+            choices=list(renderers),
+        )
+
         seen_automagics = set()
         chosen_configurables_list = {}
         for amagic in automagics:
@@ -315,16 +356,39 @@ class CommandLine:
         subparser = parser.add_subparsers(
             title="Plugins",
             dest="plugin",
-            description="For plugin specific options, run '{} <plugin> --help'".format(
-                self.CLI_NAME
-            ),
+            description=f"For plugin specific options, run '{self.CLI_NAME} <plugin> --help'",
             action=volargparse.HelpfulSubparserAction,
+            metavar="PLUGIN",
         )
         for plugin in sorted(plugin_list):
+            # First line of a plugin docstring will be the short description for -h.
+            # Text after the first two consecutive new lines will be
+            # the additional description (argparse epilog).
+            short_help = additional_help = None
+            if plugin_list[plugin].__doc__ is not None:
+                doc_split = plugin_list[plugin].__doc__.split("\n\n", 1)
+                short_help = doc_split[0].strip()
+                if len(doc_split) > 1:
+                    additional_help = doc_split[1].strip()
+
             plugin_parser = subparser.add_parser(
-                plugin, help=plugin_list[plugin].__doc__
+                plugin,
+                help=short_help,
+                description=short_help,
+                epilog=additional_help,
             )
             self.populate_requirements_argparse(plugin_parser, plugin_list[plugin])
+
+        # One last pass to get the renderer after we've loaded up plugins,
+        # so we can determine whether to show the banner on normal output or not...
+        known_args = [arg for arg in sys.argv[1:] if arg != "--help" and arg != "-h"]
+        partial_args, _ = parser.parse_known_args(known_args)
+
+        # Display banner - redirect to stderr if using structured output
+        banner_output = sys.stdout
+        if renderers[partial_args.renderer].structured_output:
+            banner_output = sys.stderr
+        banner_output.write(f"Volatility 3 Framework {constants.PACKAGE_VERSION}\n")
 
         ###
         # PASS TO UI
@@ -332,9 +396,16 @@ class CommandLine:
         # Hand the plugin requirements over to the CLI (us) and let it construct the config tree
 
         # Run the argparser
+        if HAS_ARGCOMPLETE:
+            # The autocompletion line must be after the partial_arg handling, so that it doesn't trip it
+            # before all the plugins have been added
+            argcomplete.autocomplete(parser)
         args = parser.parse_args()
+
         if args.plugin is None:
-            parser.error("Please select a plugin to run")
+            parser.error(
+                f"Please select a plugin to run (see '{self.CLI_NAME} --help' for options"
+            )
 
         vollog.log(
             constants.LOGLEVEL_VVV, f"Cache directory used: {constants.CACHE_PATH}"
@@ -353,14 +424,16 @@ class CommandLine:
         ###
         if args.file:
             try:
-                single_location = self.location_from_file(args.file)
+                single_location = requirements.URIRequirement.location_from_file(
+                    args.file
+                )
                 ctx.config["automagic.LayerStacker.single_location"] = single_location
             except ValueError as excp:
                 parser.error(str(excp))
 
         # UI fills in the config, here we load it from the config file and do it before we process the CL parameters
         if args.config:
-            with open(args.config, "r") as f:
+            with open(args.config) as f:
                 json_val = json.load(f)
                 ctx.config.splice(
                     plugin_config_path,
@@ -390,8 +463,9 @@ class CommandLine:
                     raise ValueError(
                         "Invalid extension (extensions must be of the format \"conf.path.value='value'\")"
                     )
-                address, value = extension[: extension.find("=")], json.loads(
-                    extension[extension.find("=") + 1 :]
+                address, value = (
+                    extension[: extension.find("=")],
+                    json.loads(extension[extension.find("=") + 1 :]),
                 )
                 ctx.config[address] = value
 
@@ -442,8 +516,15 @@ class CommandLine:
         try:
             # Construct and run the plugin
             if constructed:
-                renderers[args.renderer]().render(constructed.run())
-        except (exceptions.VolatilityException) as excp:
+                vollog.debug(
+                    f"Successfully constructed {args.plugin} {constructed.version}"
+                )
+                grid = constructed.run()
+                renderer = renderers[args.renderer]()
+                renderer.filter = text_filter.CLIFilter(grid, args.filters)
+                renderer.column_hide_list = args.hide_columns
+                renderer.render(grid)
+        except exceptions.VolatilityException as excp:
             self.process_exceptions(excp)
 
     @classmethod
@@ -456,19 +537,54 @@ class CommandLine:
         Returns:
             The URL for the location of the file
         """
-        # We want to work in URLs, but we need to accept absolute and relative files (including on windows)
-        single_location = parse.urlparse(filename, "")
-        if single_location.scheme == "" or len(single_location.scheme) == 1:
-            single_location = parse.urlparse(
-                parse.urljoin("file:", request.pathname2url(os.path.abspath(filename)))
+        vollog.debug(
+            f"{__name__}.location_from_file has been deprecated and moved to requirements.URIRequirement.location_from_file"
+        )
+        return requirements.URIRequirement.location_from_file(filename)
+
+    def load_system_defaults(
+        self, filename: str
+    ) -> Tuple[List[Tuple[int, str]], Dict[str, Any]]:
+        """Modify the main configuration based on the default configuration override"""
+        # Build the config path
+        default_config_path = os.path.join(
+            os.path.expanduser("~"), ".config", "volatility3", filename
+        )
+        if sys.platform == "win32":
+            default_config_path = os.path.join(
+                os.environ.get("APPDATA", os.path.expanduser("~")),
+                "volatility3",
+                filename,
             )
-        if single_location.scheme == "file":
-            if not os.path.exists(request.url2pathname(single_location.path)):
-                filename = request.url2pathname(single_location.path)
-                if not filename:
-                    raise ValueError("File URL looks incorrect (potentially missing /)")
-                raise ValueError(f"File does not exist: {filename}")
-        return parse.urlunparse(single_location)
+
+        delayed_logs = []
+
+        # Process it if the files exist
+        if os.path.exists(default_config_path):
+            with open(default_config_path, "rb") as config_json:
+                result = json.load(config_json)
+            if not isinstance(result, dict):
+                delayed_logs.append(
+                    (
+                        logging.INFO,
+                        f"Default configuration file {default_config_path} does not contain a dictionary",
+                    )
+                )
+            else:
+                delayed_logs.append(
+                    (
+                        logging.INFO,
+                        f"Loading default configuration options from {default_config_path}",
+                    )
+                )
+                delayed_logs.append(
+                    (
+                        logging.DEBUG,
+                        f"Loaded configuration: {json.dumps(result, indent=2, sort_keys=True)}",
+                    )
+                )
+                return delayed_logs, result
+        return delayed_logs, {}
 
     def process_exceptions(self, excp):
         """Provide useful feedback if an exception occurs during a run of a plugin."""
@@ -480,6 +596,8 @@ class CommandLine:
         # Log the full exception at a high level for easy access
         fulltrace = traceback.TracebackException.from_exception(excp).format(chain=True)
         vollog.debug("".join(fulltrace))
+
+        file_a_bug_msg = f"Please re-run with -vvv and file a bug with the output at {constants.BUG_URL}"
 
         if isinstance(excp, exceptions.InvalidAddressException):
             general = "Volatility was unable to read a requested page:"
@@ -525,22 +643,28 @@ class CommandLine:
         elif isinstance(excp, exceptions.LayerException):
             general = f"Volatility experienced a layer-related issue: {excp.layer_name}"
             detail = f"{excp}"
-            caused_by = [
-                "A faulty layer implementation (re-run with -vvv and file a bug)"
-            ]
+            caused_by = [f"A faulty layer implementation. {file_a_bug_msg}"]
         elif isinstance(excp, exceptions.MissingModuleException):
             general = f"Volatility could not import a necessary module: {excp.module}"
             detail = f"{excp}"
             caused_by = [
                 "A required python module is not installed (install the module and re-run)"
             ]
+        elif isinstance(excp, exceptions.RenderException):
+            general = "Volatility experienced an issue when rendering the output:"
+            detail = f"{excp}"
+            caused_by = ["An invalid renderer option, such as no visible columns"]
+        elif isinstance(excp, exceptions.VersionMismatchException):
+            general = "A version mismatch was detected between two components:"
+            detail = f"{excp}"
+            caused_by = [
+                excp.failure_reason or "An outdated API caller, such as a method.",
+                file_a_bug_msg,
+            ]
         else:
             general = "Volatility encountered an unexpected situation."
             detail = ""
-            caused_by = [
-                "Please re-run using with -vvv and file a bug with the output",
-                f"at {constants.BUG_URL}",
-            ]
+            caused_by = [file_a_bug_msg]
 
         # Code that actually renders the exception
         output = sys.stderr
@@ -623,9 +747,7 @@ class CommandLine:
                     if isinstance(requirement, requirements.ListRequirement):
                         if not isinstance(value, list):
                             raise TypeError(
-                                "Configuration for ListRequirement was not a list: {}".format(
-                                    requirement.name
-                                )
+                                f"Configuration for ListRequirement was not a list: {requirement.name}"
                             )
                         value = [requirement.element_type(x) for x in value]
                     if not inspect.isclass(configurables_list[configurable]):
@@ -638,6 +760,17 @@ class CommandLine:
                     )
                     context.config[extended_path] = value
 
+    def order_extra_verbose_levels(self):
+        for level, level_value in enumerate(
+            [
+                constants.LOGLEVEL_V,
+                constants.LOGLEVEL_VV,
+                constants.LOGLEVEL_VVV,
+                constants.LOGLEVEL_VVVV,
+            ]
+        ):
+            logging.addLevelName(level_value, f"DETAIL {level + 1}")
+
     def file_handler_class_factory(self, direct=True):
         output_dir = self.output_dir
 
@@ -646,19 +779,17 @@ class CommandLine:
                 """Gets the final filename"""
                 if output_dir is None:
                     raise TypeError("Output directory is not a string")
+
                 os.makedirs(output_dir, exist_ok=True)
 
-                pref_name_array = self.preferred_filename.split(".")
-                filename, extension = (
-                    os.path.join(output_dir, ".".join(pref_name_array[:-1])),
-                    pref_name_array[-1],
-                )
-                output_filename = f"{filename}.{extension}"
+                output_filename = os.path.join(output_dir, self.preferred_filename)
+                filename, extension = os.path.splitext(output_filename)
 
                 counter = 1
                 while os.path.exists(output_filename):
-                    output_filename = f"{filename}-{counter}.{extension}"
+                    output_filename = f"{filename}-{counter}{extension}"
                     counter += 1
+
                 return output_filename
 
         class CLIMemFileHandler(io.BytesIO, CLIFileHandler):
@@ -669,7 +800,7 @@ class CommandLine:
             def close(self):
                 # Don't overcommit
                 if self.closed:
-                    return
+                    return None
 
                 self.seek(0)
 
@@ -689,7 +820,7 @@ class CommandLine:
                 fd, self._name = tempfile.mkstemp(
                     suffix=".vol3", prefix="tmp_", dir=output_dir
                 )
-                self._file = io.open(fd, mode="w+b")
+                self._file = open(fd, mode="w+b")
                 CLIFileHandler.__init__(self, filename)
                 for item in dir(self._file):
                     if not item.startswith("_") and item not in (
@@ -719,10 +850,18 @@ class CommandLine:
                 """Closes and commits the file (by moving the temporary file to the correct name"""
                 # Don't overcommit
                 if self._file.closed:
-                    return
+                    return None
+
+                output_filename = self._get_final_filename()
+
+                # Update the filename, which may have changed if a file with
+                # the same name already existed. This needs to be done before
+                # closing the file, otherwise FileHandlerInterface will raise
+                # an exception. Also, the preferred_filename setter only allows
+                #  a specific set of characters, where '/' is not in that list
+                self.preferred_filename = os.path.basename(output_filename)
 
                 self._file.close()
-                output_filename = self._get_final_filename()
                 os.rename(self._name, output_filename)
 
         if direct:
@@ -754,9 +893,7 @@ class CommandLine:
                 requirement, interfaces.configuration.RequirementInterface
             ):
                 raise TypeError(
-                    "Plugin contains requirements that are not RequirementInterfaces: {}".format(
-                        configurable.__name__
-                    )
+                    f"Plugin contains requirements that are not RequirementInterfaces: {configurable.__name__}"
                 )
             if isinstance(requirement, interfaces.configuration.SimpleTypeRequirement):
                 additional["type"] = requirement.instance_type
@@ -770,7 +907,11 @@ class CommandLine:
                 requirement,
                 volatility3.framework.configuration.requirements.ListRequirement,
             ):
-                additional["type"] = requirement.element_type
+                # Allow a list of integers, specified with the convenient 0x hexadecimal format
+                if requirement.element_type is int:
+                    additional["type"] = lambda x: int(x, 0)
+                else:
+                    additional["type"] = requirement.element_type
                 nargs = "*" if requirement.optional else "+"
                 additional["nargs"] = nargs
             elif isinstance(

@@ -86,7 +86,7 @@ class IntermediateSymbolTable(interfaces.symbols.SymbolTableInterface):
         config_path: str,
         name: str,
         isf_url: str,
-        native_types: interfaces.symbols.NativeTableInterface = None,
+        native_types: Optional[interfaces.symbols.NativeTableInterface] = None,
         table_mapping: Optional[Dict[str, str]] = None,
         validate: bool = True,
         class_types: Optional[
@@ -101,7 +101,7 @@ class IntermediateSymbolTable(interfaces.symbols.SymbolTableInterface):
         Args:
             context: The volatility context for the symbol table
             config_path: The configuration path for the symbol table
-            name: The name for the symbol table (this is used in symbols e.g. table!symbol )
+            name: The name for the symbol table (this is used in symbols e.g. table!symbol)
             isf_url: The URL pointing to the ISF file location
             native_types: The NativeSymbolTable that contains the native types for this symbol table
             table_mapping: A dictionary linking names referenced in the file with symbol tables in the context
@@ -111,7 +111,7 @@ class IntermediateSymbolTable(interfaces.symbols.SymbolTableInterface):
         """
         # Check there are no obvious errors
         # Open the file and test the version
-        self._versions = dict([(x.version, x) for x in class_subclasses(ISFormatTable)])
+        self._versions = dict((x.version, x) for x in class_subclasses(ISFormatTable))
         with resources.ResourceAccessor().open(isf_url) as fp:
             reader = codecs.getreader("utf-8")
             json_object = json.load(reader(fp))  # type: ignore
@@ -166,12 +166,12 @@ class IntermediateSymbolTable(interfaces.symbols.SymbolTableInterface):
         format.
 
         An interface version such as Major.Minor.Patch means that Major
-        of the provider must be equal to that of the   consumer, and the
+        of the provider must be equal to that of the consumer, and the
         provider (the JSON in this instance) must have a greater minor
-        (indicating that only additive   changes have been made) than
+        (indicating that only additive changes have been made) than
         the consumer (in this case, the file reader).
         """
-        major, minor, patch = [int(x) for x in version.split(".")]
+        major, minor, patch = (int(x) for x in version.split("."))
         supported_versions = [x for x in versions if x[0] == major and x[1] >= minor]
         if not supported_versions:
             raise ValueError(
@@ -183,6 +183,7 @@ class IntermediateSymbolTable(interfaces.symbols.SymbolTableInterface):
     types = _construct_delegate_function("types", True)
     enumerations = _construct_delegate_function("enumerations", True)
     metadata = _construct_delegate_function("metadata", True)
+    producer = _construct_delegate_function("producer", True)
     clear_symbol_cache = _construct_delegate_function("clear_symbol_cache")
     get_type = _construct_delegate_function("get_type")
     get_symbol = _construct_delegate_function("get_symbol")
@@ -245,9 +246,12 @@ class IntermediateSymbolTable(interfaces.symbols.SymbolTableInterface):
                             if name.endswith(zip_match + extension) or (
                                 zip_match == "*" and name.endswith(extension)
                             ):
-                                yield "jar:file:" + str(
-                                    pathlib.Path(zip_path)
-                                ) + "!" + name
+                                yield (
+                                    "jar:file:"
+                                    + str(pathlib.Path(zip_path))
+                                    + "!"
+                                    + name
+                                )
 
     @classmethod
     def create(
@@ -281,7 +285,7 @@ class IntermediateSymbolTable(interfaces.symbols.SymbolTableInterface):
         urls = list(cls.file_symbol_url(sub_path, filename))
         if not urls:
             raise FileNotFoundError(
-                "No symbol files found at provided filename: {}", filename
+                f"No symbol files found at provided filename: {filename}",
             )
         table_name = context.symbol_space.free_table_name(filename)
         table = cls(
@@ -318,7 +322,7 @@ class ISFormatTable(interfaces.symbols.SymbolTableInterface, metaclass=ABCMeta):
         config_path: str,
         name: str,
         json_object: Any,
-        native_types: interfaces.symbols.NativeTableInterface = None,
+        native_types: Optional[interfaces.symbols.NativeTableInterface] = None,
         table_mapping: Optional[Dict[str, str]] = None,
     ) -> None:
         self._json_object = json_object
@@ -372,6 +376,14 @@ class ISFormatTable(interfaces.symbols.SymbolTableInterface, metaclass=ABCMeta):
         table."""
         return None
 
+    @property
+    def producer(self) -> Optional["metadata.ProducerMetadata"]:
+        """Returns a metadata object containing information about the symbol
+        table."""
+        return metadata.ProducerMetadata(
+            self._json_object.get("metadata", {}).get("producer", {})
+        )
+
     def clear_symbol_cache(self) -> None:
         """Clears the symbol cache of the symbol table."""
         self._symbol_cache.clear()
@@ -402,18 +414,27 @@ class Version1Format(ISFormatTable):
 
     @property
     def symbols(self) -> Iterable[str]:
-        """Returns an iterator of the symbol names."""
-        return list(self._json_object.get("symbols", {}))
+        """Returns an iterable (KeysView) of the available symbol names."""
+        return self._json_object.get("symbols", {}).keys()
 
     @property
-    def enumerations(self) -> Iterable[str]:
-        """Returns an iterator of the available enumerations."""
-        return list(self._json_object.get("enums", {}))
+    def enumerations(self) -> Iterable[Any]:
+        """Returns an iterable (KeysView) of the available enumerations."""
+        return self._json_object.get("enums", {}).keys()
 
     @property
     def types(self) -> Iterable[str]:
-        """Returns an iterator of the symbol type names."""
-        return list(self._json_object.get("user_types", {})) + list(self.natives.types)
+        """Returns an iterable (KeysView) of the available symbol type names."""
+        # We use ** instead of
+        # `set(self._json_object.get("user_types", {}).keys()).union(self.natives.types)`
+        # because converting user_types dict to a set is costly.
+        # It is more efficient to convert the (very small) self.natives.types set to a dict.
+        # FIXME: On Python3.8 support drop, merge the two dicts using the merge operator:
+        # (self._json_object.get("user_types", {}) | dict.fromkeys(self.natives.types)).keys()
+        return {
+            **self._json_object.get("user_types", {}),
+            **dict.fromkeys(self.natives.types),
+        }.keys()
 
     def get_type_class(self, name: str) -> Type[interfaces.objects.ObjectInterface]:
         return self._overrides.get(name, objects.AggregateType)
@@ -729,10 +750,17 @@ class Version6Format(Version5Format):
     @property
     def metadata(self) -> Optional[interfaces.symbols.MetadataInterface]:
         """Returns a MetadataInterface object."""
-        if self._json_object.get("metadata", {}).get("windows"):
-            return metadata.WindowsMetadata(self._json_object["metadata"]["windows"])
-        if self._json_object.get("metadata", {}).get("linux"):
-            return metadata.LinuxMetadata(self._json_object["metadata"]["linux"])
+        if "metadata" not in self._json_object:
+            return None
+
+        json_metadata = self._json_object["metadata"]
+        if "windows" in json_metadata:
+            return metadata.WindowsMetadata(json_metadata["windows"])
+        if "linux" in json_metadata:
+            return metadata.LinuxMetadata(json_metadata["linux"])
+        if "mac" in json_metadata:
+            return metadata.MacMetadata(json_metadata["mac"])
+
         return None
 
 
@@ -789,7 +817,12 @@ class Version8Format(Version7Format):
         type_definition = self._json_object["user_types"].get(type_name)
         if type_definition is None:
             # Fall back to the natives table
-            return self.natives.get_type(self.name + constants.BANG + type_name)
+            if type_name in self.natives.types:
+                return self.natives.get_type(self.name + constants.BANG + type_name)
+            else:
+                raise exceptions.SymbolError(
+                    type_name, self.name, f"Unknown symbol: {type_name}"
+                )
 
         members = self._process_fields(type_definition["fields"])
 

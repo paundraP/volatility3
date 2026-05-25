@@ -6,6 +6,7 @@
 One layer may combine other layers, map data based on the data itself,
 or map a procedure (such as decryption) across another layer of data.
 """
+
 import collections.abc
 import functools
 import logging
@@ -136,7 +137,7 @@ class DataLayerInterface(
     def minimum_address(self) -> int:
         """Returns the minimum valid address of the space."""
 
-    @property
+    @functools.cached_property
     def address_mask(self) -> int:
         """Returns a mask which encapsulates all the active bits of an address
         for this layer."""
@@ -188,7 +189,6 @@ class DataLayerInterface(
         the object unreadable (exceptions will be thrown using a
         DataLayer after destruction)
         """
-        pass
 
     @classmethod
     def get_requirements(cls) -> List[interfaces.configuration.RequirementInterface]:
@@ -211,7 +211,7 @@ class DataLayerInterface(
         context: interfaces.context.ContextInterface,
         scanner: ScannerInterface,
         progress_callback: constants.ProgressCallback = None,
-        sections: Iterable[Tuple[int, int]] = None,
+        sections: Optional[Iterable[Tuple[int, int]]] = None,
     ) -> Iterable[Any]:
         """Scans a Translation layer by chunk.
 
@@ -294,7 +294,7 @@ class DataLayerInterface(
         sections."""
         result: List[Tuple[int, int]] = []
         position = 0
-        for (start, length) in sorted(sections):
+        for start, length in sorted(sections):
             if result and start <= position:
                 initial_start, _ = result.pop()
                 result.append((initial_start, (start + length) - initial_start))
@@ -361,9 +361,7 @@ class DataLayerInterface(
                 data += self.context.layers[layer_name].read(address, chunk_size)
             except exceptions.InvalidAddressException:
                 vollog.debug(
-                    "Invalid address in layer {} found scanning {} at address {:x}".format(
-                        layer_name, self.name, address
-                    )
+                    f"Invalid address in layer {layer_name} found scanning {self.name} at address {address:x}"
                 )
 
         if len(data) > scanner.chunk_size + scanner.overlap:
@@ -375,7 +373,6 @@ class DataLayerInterface(
     def _scan_metric(
         self, _scanner: "ScannerInterface", sections: List[Tuple[int, int]]
     ) -> Callable[[int], float]:
-
         if not sections:
             raise ValueError("Sections have no size, nothing to scan")
         last_section, last_length = sections[-1]
@@ -551,7 +548,7 @@ class TranslationLayerInterface(DataLayerInterface, metaclass=ABCMeta):
         scanner.chunk_size + scanner.overlap DataLayers by default are
         assumed to have no holes
         """
-        for (section_start, section_length) in sections:
+        for section_start, section_length in sections:
             output: List[Tuple[str, int, int]] = []
 
             # Hold the offsets of each chunk (including how much has been filled)
@@ -679,16 +676,12 @@ class LayerContainer(collections.abc.Mapping):
             name: The name of the layer to delete
         """
         for layer in self._layers:
-            depend_list = [
-                superlayer
-                for superlayer in self._layers
-                if name in self._layers[layer].dependencies
-            ]
-            if depend_list:
+            if name in self._layers[layer].dependencies:
                 raise exceptions.LayerException(
                     self._layers[layer].name,
-                    f"Layer {self._layers[layer].name} is depended upon: {', '.join(depend_list)}",
+                    f"Layer {name} is depended upon by {layer}",
                 )
+        # Otherwise, wipe out the layer
         self._layers[name].destroy()
         del self._layers[name]
 
@@ -726,7 +719,7 @@ class LayerContainer(collections.abc.Mapping):
         raise NotImplementedError("Cycle checking has not yet been implemented")
 
 
-class DummyProgress(object):
+class DummyProgress:
     """A class to emulate Multiprocessing/threading Value objects."""
 
     def __init__(self) -> None:

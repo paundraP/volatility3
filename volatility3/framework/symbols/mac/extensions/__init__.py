@@ -2,6 +2,7 @@
 # which is available at https://www.volatilityfoundation.org/license/vsl-v1.0
 #
 import contextlib
+import functools
 import logging
 from typing import Generator, Iterable, Optional, Set, Tuple
 
@@ -17,8 +18,9 @@ class proc(generic.GenericIntelProcess):
     def get_task(self):
         return self.task.dereference().cast("task")
 
+    @functools.lru_cache
     def add_process_layer(
-        self, config_prefix: str = None, preferred_name: str = None
+        self, config_prefix: Optional[str] = None, preferred_name: Optional[str] = None
     ) -> Optional[str]:
         """Constructs a new layer based on the process's DTB.
 
@@ -50,7 +52,7 @@ class proc(generic.GenericIntelProcess):
             task = self.get_task()
             current_map = task.map.hdr.links.next
         except exceptions.InvalidAddressException:
-            return
+            return None
 
         seen: Set[int] = set()
 
@@ -138,13 +140,13 @@ class vm_map_object(objects.StructType):
 class vnode(objects.StructType):
     def _do_calc_path(self, ret, vnodeobj, vname):
         if vnodeobj is None:
-            return
+            return None
 
         if vname:
             try:
                 ret.append(utility.pointer_to_string(vname, 255))
             except exceptions.InvalidAddressException:
-                return
+                return None
 
         if int(vnodeobj.v_flag) & 0x000001 != 0 and int(vnodeobj.v_mount) != 0:
             if int(vnodeobj.v_mount.mnt_vnodecovered) != 0:
@@ -158,7 +160,7 @@ class vnode(objects.StructType):
                 parent = vnodeobj.v_parent
                 parent_name = parent.v_name
             except exceptions.InvalidAddressException:
-                return
+                return None
 
             self._do_calc_path(ret, parent, parent_name)
 
@@ -206,7 +208,7 @@ class vm_map_entry(objects.StructType):
         permask = "rwx"
         perms = ""
 
-        for (ctr, i) in enumerate([1, 3, 5]):
+        for ctr, i in enumerate([1, 3, 5]):
             if (self.protection & i) == i:
                 perms = perms + permask[ctr]
             else:
@@ -237,7 +239,7 @@ class vm_map_entry(objects.StructType):
     def get_path(self, context, config_prefix):
         node = self.get_vnode(context, config_prefix)
 
-        if type(node) == str and node == "sub_map":
+        if type(node) is str and node == "sub_map":
             ret = node
         elif node:
             path = []
@@ -490,22 +492,24 @@ class queue_entry(objects.StructType):
 
         for attr in ["next", "prev"]:
             with contextlib.suppress(exceptions.InvalidAddressException):
-                n = getattr(self, attr).dereference().cast(type_name)
-
-                while n is not None and n.vol.offset != list_head:
-                    if n.vol.offset in seen:
+                queue_element = getattr(self, attr).dereference().cast(type_name)
+                while (
+                    queue_element is not None
+                    and queue_element.vol.offset != list_head.vol.offset
+                ):
+                    if queue_element.vol.offset in seen:
                         break
 
-                    yield n
+                    yield queue_element
 
-                    seen.add(n.vol.offset)
+                    seen.add(queue_element.vol.offset)
 
                     yielded = yielded + 1
                     if yielded == max_size:
-                        return
+                        return None
 
-                    n = (
-                        getattr(n.member(attr=member_name), attr)
+                    queue_element = (
+                        getattr(queue_element.member(attr=member_name), attr)
                         .dereference()
                         .cast(type_name)
                     )
@@ -593,7 +597,7 @@ class sysctl_oid(objects.StructType):
         checks = [0x80000000, 0x40000000, 0x00800000]
         perms = ["R", "W", "L"]
 
-        for (i, c) in enumerate(checks):
+        for i, c in enumerate(checks):
             if c & self.oid_kind:
                 ret = ret + perms[i]
             else:

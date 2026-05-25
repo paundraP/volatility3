@@ -4,6 +4,7 @@
 import contextlib
 import logging
 import struct
+import os
 from typing import Any, Dict, List, Optional
 
 from volatility3.framework import constants, exceptions, interfaces
@@ -56,14 +57,18 @@ class VmwareLayer(segmented.SegmentedLayer):
             )
 
         meta_layer = self.context.layers.get(self._meta_layer, None)
+        if meta_layer is None:
+            raise exceptions.LayerException(
+                self._meta_layer, "VMware: Meta layer not found"
+            )
         header_size = struct.calcsize(self.header_structure)
         data = meta_layer.read(0, header_size)
         magic, unknown, groupCount = struct.unpack(self.header_structure, data)
         if magic not in [
-            b"\xD0\xBE\xD2\xBE",
-            b"\xD1\xBA\xD1\xBA",
-            b"\xD2\xBE\xD2\xBE",
-            b"\xD3\xBE\xD3\xBE",
+            b"\xd0\xbe\xd2\xbe",
+            b"\xd1\xba\xd1\xba",
+            b"\xd2\xbe\xd2\xbe",
+            b"\xd3\xbe\xd3\xbe",
         ]:
             raise VmwareFormatException(
                 self.name, f"Wrong magic bytes for Vmware layer: {repr(magic)}"
@@ -232,6 +237,11 @@ class VmwareStacker(interfaces.automagic.StackerLayerInterface):
             )
 
             if not vmss_success and not vmsn_success:
+                vmem_file_basename = os.path.basename(location)
+                example_vmss_file_basename = os.path.basename(vmss)
+                vollog.warning(
+                    f"No metadata file found alongside VMEM file. A VMSS or VMSN file may be required to correctly process a VMEM file. These should be placed in the same directory with the same file name, e.g. {vmem_file_basename} and {example_vmss_file_basename}.",
+                )
                 return None
             new_layer_name = context.layers.free_layer_name("VmwareLayer")
             context.config[

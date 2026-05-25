@@ -26,11 +26,13 @@ class Kauth_listeners(interfaces.plugins.PluginInterface):
             requirements.VersionRequirement(
                 name="macutils", component=mac.MacUtilities, version=(1, 1, 0)
             ),
-            requirements.PluginRequirement(
-                name="lsmod", plugin=lsmod.Lsmod, version=(2, 0, 0)
+            requirements.VersionRequirement(
+                name="lsmod", component=lsmod.Lsmod, version=(2, 0, 0)
             ),
-            requirements.PluginRequirement(
-                name="kauth_scopes", plugin=kauth_scopes.Kauth_scopes, version=(2, 0, 0)
+            requirements.VersionRequirement(
+                name="kauth_scopes",
+                component=kauth_scopes.Kauth_scopes,
+                version=(2, 0, 0),
             ),
         ]
 
@@ -49,7 +51,6 @@ class Kauth_listeners(interfaces.plugins.PluginInterface):
         for scope in kauth_scopes.Kauth_scopes.list_kauth_scopes(
             self.context, self.config["kernel"]
         ):
-
             scope_name = utility.pointer_to_string(scope.ks_identifier, 128)
 
             for listener in scope.get_listeners():

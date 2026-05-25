@@ -28,8 +28,13 @@ class List_Files(plugins.PluginInterface):
                 description="Kernel module for the OS",
                 architectures=["Intel32", "Intel64"],
             ),
-            requirements.PluginRequirement(
-                name="mount", plugin=mount.Mount, version=(2, 0, 0)
+            requirements.VersionRequirement(
+                name="mount", component=mount.Mount, version=(2, 0, 0)
+            ),
+            requirements.VersionRequirement(
+                name="mac_utilities",
+                component=mac.MacUtilities,
+                version=(1, 3, 0),
             ),
         ]
 
@@ -137,7 +142,6 @@ class List_Files(plugins.PluginInterface):
     def _walk_mounts(
         cls, context: interfaces.context.ContextInterface, kernel_module_name: str
     ) -> Iterable[interfaces.objects.ObjectInterface]:
-
         loop_vnodes = {}
 
         # iterate each vnode source from each mount
@@ -186,7 +190,6 @@ class List_Files(plugins.PluginInterface):
     def list_files(
         cls, context: interfaces.context.ContextInterface, kernel_module_name: str
     ) -> Iterable[interfaces.objects.ObjectInterface]:
-
         vnodes = cls._walk_mounts(context, kernel_module_name)
 
         for voff, (vnode_name, parent_offset, vnode) in vnodes.items():
@@ -196,7 +199,6 @@ class List_Files(plugins.PluginInterface):
 
     def _generator(self):
         for vnode, full_path in self.list_files(self.context, self.config["kernel"]):
-
             yield (0, (format_hints.Hex(vnode.vol.offset), full_path))
 
     def run(self):

@@ -101,9 +101,9 @@ class IMAGE_DOS_HEADER(objects.StructType):
             )
         except OverflowError:
             vollog.warning(
-                "Volatility was unable to fix the image base for the PE file at base address {:#x}. "
+                f"Volatility was unable to fix the image base for the PE file at base address {self.vol.offset:#x}. "
                 "This will cause issues with many static analysis tools if you do not inform the "
-                "tool of the in-memory load address.".format(self.vol.offset)
+                "tool of the in-memory load address."
             )
             new_pe = raw_data
 
@@ -151,7 +151,6 @@ class IMAGE_DOS_HEADER(objects.StructType):
 
         counter = 0
         for sect in nt_header.get_sections():
-
             if sect.VirtualAddress > size_of_image:
                 raise ValueError(
                     f"Section VirtualAddress is too large: {sect.VirtualAddress}"

@@ -51,10 +51,8 @@ class NonLinearlySegmentedLayer(
         try:
             base_layer = self._context.layers[self._base_layer]
             return all(
-                [
-                    base_layer.is_valid(mapped_offset)
-                    for _i, _i, mapped_offset, _i, _s in self.mapping(offset, length)
-                ]
+                base_layer.is_valid(mapped_offset)
+                for _i, _i, mapped_offset, _i, _s in self.mapping(offset, length)
             )
         except exceptions.InvalidAddressException:
             return False
@@ -126,12 +124,18 @@ class NonLinearlySegmentedLayer(
                     current_offset = logical_offset
                     # If it starts too late then we're done
                     if logical_offset > offset + length:
-                        return
+                        return None
                 except exceptions.InvalidAddressException:
-                    return
+                    return None
             # Crop it to the amount we need left
             chunk_size = min(size, length + offset - logical_offset)
-            yield logical_offset, chunk_size, mapped_offset, mapped_size, self._base_layer
+            yield (
+                logical_offset,
+                chunk_size,
+                mapped_offset,
+                mapped_size,
+                self._base_layer,
+            )
             current_offset += chunk_size
             # Terminate if we've gone (or reached) our required limit
             if current_offset >= offset + length:
@@ -152,7 +156,7 @@ class NonLinearlySegmentedLayer(
             raise ValueError("SegmentedLayer must contain some segments")
         if self._maxaddr is None:
             mapped, _, length, _ = self._segments[-1]
-            self._maxaddr = mapped + length
+            self._maxaddr = mapped + length - 1
         return self._maxaddr
 
     @property

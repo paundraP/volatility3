@@ -2,12 +2,14 @@
 # which is available at https://www.volatilityfoundation.org/license/vsl-v1.0
 #
 
+import datetime
 import logging
-from typing import Callable, Iterable, List, Dict
+from typing import Callable, Dict, Iterable, List, Optional
 
-from volatility3.framework import renderers, interfaces, exceptions
+from volatility3.framework import exceptions, interfaces, renderers
 from volatility3.framework.configuration import requirements
 from volatility3.framework.objects import utility
+from volatility3.framework.renderers import format_hints
 from volatility3.framework.symbols import mac
 
 vollog = logging.getLogger(__name__)
@@ -56,7 +58,7 @@ class PsList(interfaces.plugins.PluginInterface):
         """Returns the list_tasks method based on the selector
 
         Args:
-            method: Must be one fo the available methods in get_task_choices
+            method: Must be one of the available methods in get_task_choices
 
         Returns:
             list_tasks method for listing tasks
@@ -82,9 +84,12 @@ class PsList(interfaces.plugins.PluginInterface):
         return list_tasks
 
     @classmethod
-    def create_pid_filter(cls, pid_list: List[int] = None) -> Callable[[int], bool]:
+    def create_pid_filter(
+        cls, pid_list: Optional[List[int]] = None
+    ) -> Callable[[int], bool]:
+        def filter_func(_):
+            return False
 
-        filter_func = lambda _: False
         # FIXME: mypy #4973 or #2608
         pid_list = pid_list or []
         filter_list = [x for x in pid_list if x is not None]
@@ -106,10 +111,20 @@ class PsList(interfaces.plugins.PluginInterface):
             self.config["kernel"],
             filter_func=self.create_pid_filter(self.config.get("pid", None)),
         ):
-            pid = task.p_pid
-            ppid = task.p_ppid
+            offset = format_hints.Hex(task.vol.offset)
             name = utility.array_to_string(task.p_comm)
-            yield (0, (pid, ppid, name))
+            pid = task.p_pid
+            uid = task.p_uid
+            gid = task.p_gid
+            start_time_seconds = task.p_start.tv_sec
+            start_time_microseconds = task.p_start.tv_usec
+            start_time = datetime.datetime.fromtimestamp(
+                start_time_seconds + start_time_microseconds / 1e6
+            )
+
+            ppid = task.p_ppid
+
+            yield (0, (offset, name, pid, uid, gid, start_time, ppid))
 
     @classmethod
     def list_tasks_allproc(
@@ -122,7 +137,7 @@ class PsList(interfaces.plugins.PluginInterface):
 
         Args:
             context: The context to retrieve required elements (layers, symbol tables) from
-            kernel_module_name: The name of the the kernel module on which to operate
+            kernel_module_name: The name of the kernel module on which to operate
             filter_func: A function which takes a process object and returns True if the process should be ignored/filtered
 
         Returns:
@@ -167,7 +182,7 @@ class PsList(interfaces.plugins.PluginInterface):
 
         Args:
             context: The context to retrieve required elements (layers, symbol tables) from
-            kernel_module_name: The name of the the kernel module on which to operate
+            kernel_module_name: The name of the kernel module on which to operate
             filter_func: A function which takes a task object and returns True if the task should be ignored/filtered
 
         Returns:
@@ -211,7 +226,7 @@ class PsList(interfaces.plugins.PluginInterface):
 
         Args:
             context: The context to retrieve required elements (layers, symbol tables) from
-            kernel_module_name: The name of the the kernel module on which to operate
+            kernel_module_name: The name of the kernel module on which to operate
             filter_func: A function which takes a task object and returns True if the task should be ignored/filtered
 
         Returns:
@@ -246,7 +261,7 @@ class PsList(interfaces.plugins.PluginInterface):
 
         Args:
             context: The context to retrieve required elements (layers, symbol tables) from
-            kernel_module_name: The name of the the kernel module on which to operate
+            kernel_module_name: The name of the kernel module on which to operate
             filter_func: A function which takes a task object and returns True if the task should be ignored/filtered
 
         Returns:
@@ -284,7 +299,7 @@ class PsList(interfaces.plugins.PluginInterface):
 
         Args:
             context: The context to retrieve required elements (layers, symbol tables) from
-            kernel_module_name: The name of the the kernel module on which to operate
+            kernel_module_name: The name of the kernel module on which to operate
             filter_func: A function which takes a task object and returns True if the task should be ignored/filtered
 
         Returns:
@@ -311,5 +326,14 @@ class PsList(interfaces.plugins.PluginInterface):
 
     def run(self):
         return renderers.TreeGrid(
-            [("PID", int), ("PPID", int), ("COMM", str)], self._generator()
+            [
+                ("OFFSET", format_hints.Hex),
+                ("NAME", str),
+                ("PID", int),
+                ("UID", int),
+                ("GID", int),
+                ("Start Time", datetime.datetime),
+                ("PPID", int),
+            ],
+            self._generator(),
         )

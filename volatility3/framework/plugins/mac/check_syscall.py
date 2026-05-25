@@ -31,8 +31,8 @@ class Check_syscall(plugins.PluginInterface):
             requirements.VersionRequirement(
                 name="macutils", component=mac.MacUtilities, version=(1, 0, 0)
             ),
-            requirements.PluginRequirement(
-                name="lsmod", plugin=lsmod.Lsmod, version=(2, 0, 0)
+            requirements.VersionRequirement(
+                name="lsmod", component=lsmod.Lsmod, version=(2, 0, 0)
             ),
         ]
 
@@ -47,7 +47,7 @@ class Check_syscall(plugins.PluginInterface):
 
         table = kernel.object_from_symbol(symbol_name="sysent")
 
-        for (i, ent) in enumerate(table):
+        for i, ent in enumerate(table):
             try:
                 call_addr = ent.sy_call.dereference().vol.offset
             except exceptions.InvalidAddressException:
