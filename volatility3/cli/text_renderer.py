@@ -624,6 +624,7 @@ class JsonLinesRenderer(JsonRenderer):
             outfd.write(json.dumps(line, sort_keys=True))
             outfd.write("\n")
 
+
 class MermaidRenderer(CLIRenderer):
     _type_renderers = {
         format_hints.Bin: optional(lambda x: f"0b{x:b}"),
@@ -633,7 +634,7 @@ class MermaidRenderer(CLIRenderer):
         interfaces.renderers.Disassembly: optional(display_disassembly),
         bytes: optional(lambda x: " ".join([f"{b:02x}" for b in x])),
         datetime.datetime: optional(lambda x: x.strftime("%Y-%m-%d %H:%M:%S.%f %Z")),
-        'default': optional(lambda x: f"{x}")
+        "default": optional(lambda x: f"{x}"),
     }
 
     name = "mermaid"
@@ -683,7 +684,7 @@ class MermaidRenderer(CLIRenderer):
             cells = []
             for column_index, column in enumerate(grid.columns):
                 renderer = self._type_renderers.get(
-                    column.type, self._type_renderers['default']
+                    column.type, self._type_renderers["default"]
                 )
                 value = renderer(node.values[column_index])
                 cells.append(f"{column.name}:{self._mermaid_label(value)}")
@@ -692,8 +693,8 @@ class MermaidRenderer(CLIRenderer):
         rows: List[Tuple[int, str]] = []
 
         def visitor(
-                node: interfaces.renderers.TreeNode,
-                accumulator: List[Tuple[int, str]],
+            node: interfaces.renderers.TreeNode,
+            accumulator: List[Tuple[int, str]],
         ) -> List[Tuple[int, str]]:
             accumulator.append((node.path_depth, format_row(node)))
             return accumulator
