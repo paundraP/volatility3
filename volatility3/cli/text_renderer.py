@@ -3,6 +3,7 @@
 #
 import csv
 import datetime
+import itertools
 import json
 import logging
 import random
@@ -708,12 +709,7 @@ class MermaidRenderer(CLIRenderer):
         # PID) because (a) PID is not guaranteed unique across a TreeGrid,
         # (b) it is plugin-specific, and (c) Mermaid IDs must avoid
         # characters like parentheses that may appear in column data.
-        node_counter = 0
-
-        def next_id() -> str:
-            nonlocal node_counter
-            node_counter += 1
-            return f"n{node_counter}"
+        node_ids = itertools.count(1)
 
         parent_stack: List[str] = []
         prev_depth = 0
@@ -721,7 +717,7 @@ class MermaidRenderer(CLIRenderer):
 
         lines: List[str] = ["graph TD"]
         for depth, label in rows:
-            node_id = next_id()
+            node_id = f"n{next(node_ids)}"
             if prev_id is not None:
                 if depth > prev_depth:
                     # Descended one or more levels. Push prev_id once per
