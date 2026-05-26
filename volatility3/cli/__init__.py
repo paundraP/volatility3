@@ -493,7 +493,7 @@ class CommandLine:
                 )
                 args.save_config = "config.json"
             if args.save_config:
-                vollog.debug("Writing out configuration data to {args.save_config}")
+                vollog.debug(f"Writing out configuration data to {args.save_config}")
                 if os.path.exists(os.path.abspath(args.save_config)):
                     parser.error(
                         f"Cannot write configuration: file {args.save_config} already exists"
