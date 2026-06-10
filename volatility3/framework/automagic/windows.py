@@ -43,7 +43,7 @@ class Intel32LayerCheck:
     KUSER_KERNEL_SPACE_ADDR = 0xFFDF0000
 
     @classmethod
-    def check(cls, layer: Union[intel.Intel, intel.IntelPAE]):
+    def check(cls, layer: intel.Intel):
         """Generates a single response of True or False depending on whether the space is a valid Windows AS"""
         # This constraint verifies that _KUSER_SHARED_DATA is shared
         # between user and kernel address spaces.
@@ -61,7 +61,7 @@ class Intel32LayerCheck:
         return False
 
 
-class IntelLayerCheck(Intel32LayerCheck):
+class Intel64LayerCheck(Intel32LayerCheck):
     KUSER_USER_SPACE_ADDR = 0x7FFE0000
     KUSER_KERNEL_SPACE_ADDR = 0xFFFFF78000000000
 
@@ -73,7 +73,7 @@ class DtbSelfReferential:
     def __init__(
         self,
         layer_type: Type[layers.intel.Intel],
-        layer_check: Union[Intel32LayerCheck.check, IntelLayerCheck.check],
+        layer_check: Union[Intel32LayerCheck.check, Intel64LayerCheck.check],
         ptr_struct: str,
         mask: int,
         valid_range: Iterable[int],
@@ -134,7 +134,7 @@ class DtbSelfRef64bit(DtbSelfReferential):
     def __init__(self) -> None:
         super().__init__(
             layer_type=layers.intel.WindowsIntel32e,
-            layer_check=IntelLayerCheck.check,
+            layer_check=Intel64LayerCheck.check,
             ptr_struct="Q",
             mask=0x3FFFFFFFFFF000,
             valid_range=range(0x100, 0x1FF),
@@ -146,7 +146,7 @@ class DtbSelfRef64bitOldWindows(DtbSelfReferential):
     def __init__(self) -> None:
         super().__init__(
             layer_type=layers.intel.WindowsIntel32e,
-            layer_check=IntelLayerCheck.check,
+            layer_check=Intel64LayerCheck.check,
             ptr_struct="Q",
             mask=0x3FFFFFFFFFF000,
             valid_range=[0x1ED],
