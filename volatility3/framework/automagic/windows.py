@@ -56,6 +56,7 @@ class Intel32LayerCheck:
             exceptions.PagedInvalidAddressException,
             exceptions.InvalidAddressException,
         ):
+            # Translation failed, caller will log this globally
             pass
 
         return False
