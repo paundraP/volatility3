@@ -41,29 +41,44 @@ vollog = logging.getLogger(__name__)
 class Intel32LayerCheck:
     KUSER_USER_SPACE_ADDR = 0x7FFE0000
     KUSER_KERNEL_SPACE_ADDR = 0xFFDF0000
+    # This field offset did not change across Windows versions.
+    # Instead of storing a complete struct definition only for this check,
+    # define it locally here.
+    KUSER_SHARED_DATA_NTMAJOR_OFF = 0x26C
+    NT_MAJOR_VALIDS = [3, 4, 5, 6, 10]
 
     @classmethod
     def check(cls, layer: intel.Intel):
         """Generates a single response of True or False depending on whether the space is a valid Windows AS"""
         # This constraint verifies that _KUSER_SHARED_DATA is shared
         # between user and kernel address spaces.
+        kaddr = uaddr = None
         try:
-            uaddr = layer._translate(cls.KUSER_USER_SPACE_ADDR)[0]
             kaddr = layer._translate(cls.KUSER_KERNEL_SPACE_ADDR)[0]
+            uaddr = layer._translate(cls.KUSER_USER_SPACE_ADDR)[0]
             if kaddr != 0 and kaddr == uaddr:
                 return True
         except (
             exceptions.PagedInvalidAddressException,
             exceptions.InvalidAddressException,
         ):
-            # Translation failed, caller will log this globally
+            # Translation failed, most likely because of UADDR
             pass
+
+        # Validate by reading the _KUSER_SHARED_DATA.NtMajorVersion field
+        if kaddr is not None:
+            data = layer.read(
+                cls.KUSER_KERNEL_SPACE_ADDR + cls.KUSER_SHARED_DATA_NTMAJOR_OFF,
+                4,
+                pad=True,
+            )
+            if struct.unpack("<I", data)[0] in cls.NT_MAJOR_VALIDS:
+                return True
 
         return False
 
 
 class Intel64LayerCheck(Intel32LayerCheck):
-    KUSER_USER_SPACE_ADDR = 0x7FFE0000
     KUSER_KERNEL_SPACE_ADDR = 0xFFFFF78000000000
 
 
