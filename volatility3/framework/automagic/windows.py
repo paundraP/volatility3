@@ -40,7 +40,7 @@ vollog = logging.getLogger(__name__)
 
 class Intel32LayerCheck:
     # These addresses are at a fixed location:
-    # "The KUSER_SHARED_DATA structure is a single page (4096 bytes) in memory 
+    # "The KUSER_SHARED_DATA structure is a single page (4096 bytes) in memory
     # that is mapped at a fixed, hardcoded address in both kernel and user side of VAS."
     # See: https://www.microsoft.com/en-us/msrc/blog/2022/04/randomizing-the-kuser_shared_data-structure-on-windows
     KUSER_USER_SPACE_ADDR = 0x7FFE0000
