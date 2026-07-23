@@ -29,13 +29,61 @@ The self-referential indices for older versions of windows are listed below:
 
 import logging
 import struct
-from typing import Generator, Iterable, List, Optional, Tuple, Type
+from typing import Generator, Iterable, List, Optional, Tuple, Type, Union
 
-from volatility3.framework import constants, interfaces, layers
+from volatility3.framework import constants, exceptions, interfaces, layers
 from volatility3.framework.configuration import requirements
 from volatility3.framework.layers import intel
 
 vollog = logging.getLogger(__name__)
+
+
+class Intel32LayerCheck:
+    # These addresses are at a fixed location:
+    # "The KUSER_SHARED_DATA structure is a single page (4096 bytes) in memory
+    # that is mapped at a fixed, hardcoded address in both kernel and user side of VAS."
+    # See: https://www.microsoft.com/en-us/msrc/blog/2022/04/randomizing-the-kuser_shared_data-structure-on-windows
+    KUSER_USER_SPACE_ADDR = 0x7FFE0000
+    KUSER_KERNEL_SPACE_ADDR = 0xFFDF0000
+    # This field offset did not change across Windows versions.
+    # Instead of storing a complete struct definition only for this check,
+    # define it locally here.
+    KUSER_SHARED_DATA_NTMAJOR_OFF = 0x26C
+    NT_MAJOR_VALIDS = [3, 4, 5, 6, 10]
+
+    @classmethod
+    def check(cls, layer: intel.Intel):
+        """Generates a single response of True or False depending on whether the space is a valid Windows AS"""
+        # This constraint verifies that _KUSER_SHARED_DATA is shared
+        # between user and kernel address spaces.
+        kaddr = uaddr = None
+        try:
+            kaddr = layer._translate(cls.KUSER_KERNEL_SPACE_ADDR)[0]
+            uaddr = layer._translate(cls.KUSER_USER_SPACE_ADDR)[0]
+            if kaddr != 0 and kaddr == uaddr:
+                return True
+        except (
+            exceptions.PagedInvalidAddressException,
+            exceptions.InvalidAddressException,
+        ):
+            # Translation failed, most likely because of UADDR
+            pass
+
+        # Validate by reading the _KUSER_SHARED_DATA.NtMajorVersion field
+        if kaddr is not None:
+            data = layer.read(
+                cls.KUSER_KERNEL_SPACE_ADDR + cls.KUSER_SHARED_DATA_NTMAJOR_OFF,
+                4,
+                pad=True,
+            )
+            if struct.unpack("<I", data)[0] in cls.NT_MAJOR_VALIDS:
+                return True
+
+        return False
+
+
+class Intel64LayerCheck(Intel32LayerCheck):
+    KUSER_KERNEL_SPACE_ADDR = 0xFFFFF78000000000
 
 
 class DtbSelfReferential:
@@ -45,12 +93,14 @@ class DtbSelfReferential:
     def __init__(
         self,
         layer_type: Type[layers.intel.Intel],
+        layer_check: Union[Intel32LayerCheck.check, Intel64LayerCheck.check],
         ptr_struct: str,
         mask: int,
         valid_range: Iterable[int],
         reserved_bits: int,
     ) -> None:
         self.layer_type = layer_type
+        self.layer_check = layer_check
         self.ptr_struct = ptr_struct
         self.ptr_size = struct.calcsize(ptr_struct)
         self.mask = mask
@@ -92,6 +142,7 @@ class DtbSelfRef32bit(DtbSelfReferential):
     def __init__(self):
         super().__init__(
             layer_type=layers.intel.WindowsIntel,
+            layer_check=Intel32LayerCheck.check,
             ptr_struct="I",
             mask=0xFFFFF000,
             valid_range=[0x300],
@@ -103,6 +154,7 @@ class DtbSelfRef64bit(DtbSelfReferential):
     def __init__(self) -> None:
         super().__init__(
             layer_type=layers.intel.WindowsIntel32e,
+            layer_check=Intel64LayerCheck.check,
             ptr_struct="Q",
             mask=0x3FFFFFFFFFF000,
             valid_range=range(0x100, 0x1FF),
@@ -114,6 +166,7 @@ class DtbSelfRef64bitOldWindows(DtbSelfReferential):
     def __init__(self) -> None:
         super().__init__(
             layer_type=layers.intel.WindowsIntel32e,
+            layer_check=Intel64LayerCheck.check,
             ptr_struct="Q",
             mask=0x3FFFFFFFFFF000,
             valid_range=[0x1ED],
@@ -125,6 +178,7 @@ class DtbSelfRefPae(DtbSelfReferential):
     def __init__(self) -> None:
         super().__init__(
             layer_type=layers.intel.WindowsIntelPAE,
+            layer_check=Intel32LayerCheck.check,
             ptr_struct="Q",
             valid_range=[0x3],
             mask=0x3FFFFFFFFFF000,
@@ -317,18 +371,6 @@ class WindowsIntelStacker(interfaces.automagic.StackerLayerInterface):
                     )
                 return max_ptr
 
-            def page_table_is_dummy(page_table, ptr_size: int):
-                """Verify that a page table has at least 12 valid pointers"""
-                valid_pointers = 0
-                for _ in get_valid_page_table_pointers(page_table, ptr_size):
-                    valid_pointers += 1
-                    # 10 is an arbitrary constant
-                    if valid_pointers >= 10:
-                        # Do not consume the entire generator to enhance performance
-                        return False
-                vollog.debug(f"Found {valid_pointers} valid pointers")
-                return True
-
             hits = sorted(list(hits), key=sort_by_tests)
 
             vollog.debug(f"WindowsIntelStacker hits: {hits}")
@@ -337,13 +379,6 @@ class WindowsIntelStacker(interfaces.automagic.StackerLayerInterface):
                 # Turn the page tables into integers and find the largest one
                 page_table = base_layer.read(page_map_offset, 0x1000)
                 ptr_size = struct.calcsize(test.ptr_struct)
-                # Modern windows can have a dummy page table with only about 2 entries, so sanity check
-                if page_table_is_dummy(page_table, ptr_size):
-                    vollog.debug(
-                        f"DTB {page_map_offset:x} contains less than 12 valid pointers, ignoring"
-                    )
-                    continue
-
                 max_pointer = get_max_pointer(page_table, test, ptr_size)
 
                 if max_pointer <= base_layer.maximum_address:
@@ -362,12 +397,18 @@ class WindowsIntelStacker(interfaces.automagic.StackerLayerInterface):
                             config_path, "page_map_offset"
                         )
                     ] = page_map_offset
-                    layer = test.layer_type(
+                    tmp_layer = test.layer_type(
                         context,
                         config_path=config_path,
                         name=new_layer_name,
                         metadata={"os": "Windows"},
                     )
+                    if not test.layer_check(tmp_layer):
+                        vollog.debug(
+                            f"DTB {page_map_offset:x} failed {test.layer_type.__name__} _KUSER_SHARED_DATA check, ignoring"
+                        )
+                        continue
+                    layer = tmp_layer
                     break
                 else:
                     vollog.debug(
