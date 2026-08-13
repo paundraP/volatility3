@@ -17,11 +17,12 @@ import io
 import json
 import logging
 import os
+import pathlib
 import sys
 import tempfile
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
-from urllib import parse, request
+from urllib import parse
 
 try:
     import argcomplete
@@ -743,7 +744,10 @@ class CommandLine:
                                     raise FileNotFoundError(
                                         f"Non-existent file {value} passed to URIRequirement"
                                     )
-                                value = f"file://{request.pathname2url(os.path.abspath(value))}"
+                                # as_uri builds a correctly formed file URL on
+                                # every platform, whereas prefixing the scheme
+                                # by hand leaves too many slashes on Windows
+                                value = pathlib.Path(os.path.abspath(value)).as_uri()
                     if isinstance(requirement, requirements.ListRequirement):
                         if not isinstance(value, list):
                             raise TypeError(
