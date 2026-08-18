@@ -2375,9 +2375,8 @@ class kernel_cap_t(kernel_cap_struct):
             # In kernels >= 6.3 kernel_cap_t::val is a u64
             cap_value = self.val
         else:
-            raise exceptions.VolatilityException(
-                "Unsupported kernel capabilities implementation"
-            )
+            # Before 6.3 kernel_cap_t is a typedef of kernel_cap_struct
+            return super().get_capabilities()
 
         return cap_value & self.get_kernel_cap_full()
 
