@@ -102,8 +102,8 @@ The unit test constructs an arm64 Mach-O core in memory and verifies virtual
 translation, segment metadata, note parsing, and AArch64 PC/SP extraction.  The
 complete repository test suite passes (`7 passed, 24 skipped` where skips are
 image-dependent tests).  Ruff passes for every changed Python file.  The five
-new plugins plus generic regex scanning were also run successfully against the
-real core produced on the M1 host.
+new plugins plus generic regex and YARA scanning were also run successfully
+against the real core produced on the M1 host.
 
 ## Limitations and future work
 
