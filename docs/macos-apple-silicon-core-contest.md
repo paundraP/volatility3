@@ -46,8 +46,22 @@ python vol.py -f macos-arm64.core mac.core.CoreMaps
 python vol.py -f macos-arm64.core mac.core.CoreNotes
 python vol.py -f macos-arm64.core mac.core.CoreThreads
 python vol.py -f macos-arm64.core mac.core.MachOImages
-python vol.py -f macos-arm64.core regexscan --pattern 'SECRET|TOKEN'
+python vol.py -f macos-arm64.core regexscan.RegExScan --pattern 'SECRET|TOKEN'
 ```
+
+Select an address reported by `MachOImages` and reconstruct that executable or
+library into an output directory:
+
+```sh
+mkdir -p extracted
+python vol.py -o extracted -f macos-arm64.core mac.core.MachODump \
+  --address 0x100000000
+```
+
+Extraction is deliberately address-based so a large core containing thousands
+of shared-cache images cannot accidentally fill the output disk.  Reconstructed
+files preserve the original Mach-O file layout where all file-backed segments
+remain captured; runtime modifications may invalidate their code signatures.
 
 `MachOCoreStacker` validates the 64-bit Mach-O header and every load-command
 boundary before constructing a sparse virtual address layer.  The layer keeps

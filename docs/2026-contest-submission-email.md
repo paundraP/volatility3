@@ -12,9 +12,10 @@ Volatility Plugin Contest.
 The entry adds automatic and symbol-free analysis of native macOS `MH_CORE`
 process-memory files, including Apple Silicon.  It includes a sparse virtual
 memory layer and stacker, plugins for core metadata, maps, LLDB notes, AArch64
-thread registers and embedded Mach-O images, plus AArch64 support for generic
-regex/YARA scanning.  It was tested against a real core captured on an M1 Mac
-running macOS 26.6.2 and Volatility 3 Framework 2.28.2.
+thread registers, embedded Mach-O discovery and selective image reconstruction,
+plus AArch64 support for generic regex/YARA scanning.  It was tested against a
+real core captured on an M1 Mac running macOS 26.6.2 and Volatility 3 Framework
+2.28.2.
 
 Attached are:
 

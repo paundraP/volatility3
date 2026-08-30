@@ -46,9 +46,11 @@ The entry adds:
    flavors from `LC_THREAD` records.
 7. `mac.core.MachOImages`, finding captured arm64 executables, dylibs, bundles,
    filesets, and dyld images and reporting their UUIDs.
-8. AArch64 compatibility for the generic `regexscan.RegExScan` and
+8. `mac.core.MachODump`, selectively reconstructing one detected image from its
+   captured segments while bounding output size and avoiding bulk extraction.
+9. AArch64 compatibility for the generic `regexscan.RegExScan` and
    `yarascan.YaraScan` plugins.
-9. A consent-safe capture helper and a deterministic demonstration program
+10. A consent-safe capture helper and a deterministic demonstration program
    containing two known, explicitly fake forensic markers.
 
 ## Security and correctness properties
@@ -86,6 +88,9 @@ python vol.py -f macos-arm64-submission.core mac.core.CoreMaps
 python vol.py -f macos-arm64-submission.core mac.core.CoreNotes
 python vol.py -f macos-arm64-submission.core mac.core.CoreThreads
 python vol.py -f macos-arm64-submission.core mac.core.MachOImages
+mkdir -p extracted
+python vol.py -o extracted -f macos-arm64-submission.core mac.core.MachODump \
+  --address 0x100000000
 python vol.py -f macos-arm64-submission.core regexscan.RegExScan \
   --pattern 'VOL3_MACOS_CONTEST_MARKER_2026|DEMO_TOKEN_7f3b2a18_NOT_A_REAL_CREDENTIAL'
 ```
@@ -100,8 +105,8 @@ their original virtual addresses.
 
 The unit test constructs an arm64 Mach-O core in memory and verifies virtual
 translation, segment metadata, note parsing, and AArch64 PC/SP extraction.  The
-complete repository test suite passes (`7 passed, 24 skipped` where skips are
-image-dependent tests).  Ruff passes for every changed Python file.  The five
+complete repository test suite passes (`8 passed, 24 skipped` where skips are
+image-dependent tests).  Ruff passes for every changed Python file.  The six
 new plugins plus generic regex and YARA scanning were also run successfully
 against the real core produced on the M1 host.
 

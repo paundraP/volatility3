@@ -4,6 +4,7 @@ import struct
 
 from volatility3.framework import contexts
 from volatility3.framework.layers import macho, physical
+from volatility3.plugins.mac.core import MachOImages
 
 
 def test_macho_core_layer_maps_arm64_segments():
@@ -53,3 +54,62 @@ def test_macho_core_layer_maps_arm64_segments():
     assert layer.notes[0]["owner"] == "test metadata"
     assert layer.threads[0]["sp"] == 0x13
     assert layer.threads[0]["pc"] == 0x14
+
+
+def test_parse_embedded_arm64_macho_image():
+    image_uuid = bytes.fromhex("00112233445566778899aabbccddeeff")
+    image_commands = b"".join(
+        [
+            struct.pack(
+                "<II16sQQQQiiII",
+                0x19,
+                72,
+                b"__TEXT",
+                0x100000,
+                0x1000,
+                0,
+                0x100,
+                5,
+                5,
+                0,
+                0,
+            ),
+            struct.pack("<II16s", 0x1B, 24, image_uuid),
+        ]
+    )
+    embedded = (
+        struct.pack(
+            "<IiiIIIII", 0xFEEDFACF, 0x0100000C, 0, 2, 2, len(image_commands), 0, 0
+        )
+        + image_commands
+    )
+    embedded += bytes(0x100 - len(embedded))
+    core_segment = struct.pack(
+        "<II16sQQQQiiII",
+        0x19,
+        72,
+        b"__DATA",
+        0x100000,
+        0x1000,
+        0x200,
+        len(embedded),
+        5,
+        5,
+        0,
+        0,
+    )
+    core_header = struct.pack(
+        "<IiiIIIII", 0xFEEDFACF, 0x0100000C, 0, 4, 1, len(core_segment), 0, 0
+    )
+    core = core_header + core_segment
+    core += bytes(0x200 - len(core)) + embedded
+    ctx = contexts.Context()
+    ctx.config["base.location"] = core
+    ctx.add_layer(physical.BufferDataLayer(ctx, "base", "base", core))
+    ctx.config["core.base_layer"] = "base"
+    layer = macho.MachOCoreLayer(ctx, "core", "core")
+    ctx.add_layer(layer)
+    image = MachOImages.parse_image(layer, 0x100000)
+    assert image["type"] == "EXECUTE"
+    assert image["uuid"] == image_uuid.hex()
+    assert image["segments"][0]["name"] == "__TEXT"
