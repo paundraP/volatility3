@@ -15,7 +15,7 @@ MAC_ARCHS = ["Intel32", "Intel64"]
 MAC_ARCHS_LAYERS = [intel.Intel]
 """Mac supported architectures layers"""
 
-FRAMEWORK_ARCHS = ["Intel32", "Intel64"]
+FRAMEWORK_ARCHS = ["Intel32", "Intel64", "AArch64"]
 """Framework supported architectures"""
 FRAMEWORK_ARCHS_LAYERS = [intel.Intel]
 """Framework supported architectures layers"""

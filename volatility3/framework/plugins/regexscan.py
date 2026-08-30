@@ -8,6 +8,7 @@ from typing import List
 
 from volatility3.framework import interfaces, renderers
 from volatility3.framework.configuration import requirements
+from volatility3.framework.constants import architectures
 from volatility3.framework.interfaces import plugins
 from volatility3.framework.layers import scanners
 from volatility3.framework.renderers import format_hints
@@ -28,7 +29,7 @@ class RegExScan(plugins.PluginInterface):
             requirements.TranslationLayerRequirement(
                 name="primary",
                 description="Memory layer for the kernel",
-                architectures=["Intel32", "Intel64"],
+                architectures=architectures.FRAMEWORK_ARCHS,
             ),
             requirements.StringRequirement(
                 name="pattern", description="RegEx pattern", optional=False

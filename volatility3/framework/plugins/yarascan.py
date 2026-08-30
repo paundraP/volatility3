@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Tuple
 
 from volatility3.framework import interfaces, renderers
 from volatility3.framework.configuration import requirements
+from volatility3.framework.constants import architectures
 from volatility3.framework.interfaces import plugins
 from volatility3.framework.layers import resources
 from volatility3.framework.renderers import format_hints
@@ -117,7 +118,7 @@ class YaraScan(plugins.PluginInterface):
             requirements.TranslationLayerRequirement(
                 name="primary",
                 description="Memory layer for the kernel",
-                architectures=["Intel32", "Intel64"],
+                architectures=architectures.FRAMEWORK_ARCHS,
             ),
             requirements.VersionRequirement(
                 name="yarascanner",
