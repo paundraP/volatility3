@@ -11,7 +11,7 @@
 - [ ] Fill in author name/alias in the draft email.
 - [ ] Request the current Individual Contributor License Agreement from
       `contest@volatilityfoundation.org` and sign it.
-- [ ] Push `feature/macos-core-analysis` to the fork and update the email's
-      source link to the branch or pull request.
+- [x] Push `feature/macos-core-analysis` to the fork and include its URL in the
+      draft email.
 - [ ] Attach source archive, memory sample, SHA-256 file, and signed ICLA.
 - [ ] Send the submission before December 31, 2026.

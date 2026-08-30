@@ -27,8 +27,8 @@ The sample contains only a purpose-built test process and two explicitly fake
 markers.  Its expected SHA-256 is
 `a0392f464731d8d5248b9c31887b9646fa341a179cbdd2e8915bf13cac446e1e`.
 
-Source repository/branch: `https://github.com/paundraP/volatility3`
-(`feature/macos-core-analysis`; update this line after pushing or opening a PR.)
+Source branch:
+`https://github.com/paundraP/volatility3/tree/feature/macos-core-analysis`
 
 Thank you for reviewing the entry.  Please let me know if you need another
 sample format or any additional documentation.
